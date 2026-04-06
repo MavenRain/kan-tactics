@@ -38,15 +38,6 @@ set_option autoImplicit false
 
 /-! ## Combinators -/
 
-namespace Option
-
-/-- Monadic elimination for Option.  Applies `onSome` to the contained
-    value, or runs `onNone` if absent.  The monadic analogue of fold. -/
-@[inline] def elimM [Monad m] (o : Option α) (onNone : m β) (onSome : α → m β) : m β :=
-  o.elim onNone onSome
-
-end Option
-
 /-- Extract FVarId from an expression, returning none if not a free variable.
     Uses if/else on the boolean predicate rather than pattern matching. -/
 def exprAsFVarId (e : Expr) : Option FVarId :=

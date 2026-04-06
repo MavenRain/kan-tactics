@@ -36,6 +36,6 @@ class Category (Obj : Type u) where
 namespace Category
 
 scoped infixr:80 " >> " => Category.comp
-scoped notation "idn" => @Category.id _ _
+scoped notation "idn" => Category.id
 
 end Category

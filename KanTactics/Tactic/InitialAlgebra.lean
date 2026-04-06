@@ -71,7 +71,7 @@ def inductionKan (stx : Syntax) : KanComputation where
   kind := .initialAlgebra
   execute := fun mvarId => do
     let e <- Lean.Elab.Term.elabTerm stx none
-    (exprAsFVarId e).elimM
+    (exprAsFVarId e).elim
       -- Not a free variable: the recursor application will fail
       -- with a clear diagnostic from the kernel
       (do let recConst <- mkConstWithFreshMVarLevels `Nat.rec

@@ -13,15 +13,15 @@ A functor preserves the categorical structure: it maps objects to
 objects and morphisms to morphisms, respecting identity and composition.
 -/
 
-
 set_option autoImplicit false
 
 universe u1 v1 u2 v2 u3 v3
 
 open Category
 
-/-- A functor from category C to category D. -/
-structure Functor (C : Type u1) (D : Type u2)
+/-- A (categorical) functor from category C to category D.
+    Named `CFunctor` to avoid clashing with Lean's built-in `Functor`. -/
+structure CFunctor (C : Type u1) (D : Type u2)
     [Category.{u1, v1} C] [Category.{u2, v2} D] where
   /-- The object mapping. -/
   obj : C -> D
@@ -33,25 +33,30 @@ structure Functor (C : Type u1) (D : Type u2)
   map_comp : {X Y Z : C} -> (f : Hom X Y) -> (g : Hom Y Z) ->
     map (f >> g) = map f >> map g
 
-namespace Functor
+namespace CFunctor
 
 variable {C : Type u1} {D : Type u2} {E : Type u3}
 variable [Category.{u1, v1} C] [Category.{u2, v2} D] [Category.{u3, v3} E]
 
 /-- The identity functor on a category. -/
-def identity : Functor C C where
+def identity : CFunctor C C where
   obj := fun X => X
   map := fun f => f
   map_id := rfl
   map_comp := fun _ _ => rfl
 
 /-- Composition of functors F : C -> D and G : D -> E. -/
-def comp (F : Functor C D) (G : Functor D E) : Functor C E where
+def comp (F : CFunctor C D) (G : CFunctor D E) : CFunctor C E where
   obj := fun X => G.obj (F.obj X)
   map := fun f => G.map (F.map f)
-  map_id := by rw [F.map_id, G.map_id]
-  map_comp := fun f g => by rw [F.map_comp, G.map_comp]
+  map_id := by
+    intro
+    change G.map (F.map idn) = idn
+    rw [F.map_id, G.map_id]
+  map_comp := fun f g => by
+    change G.map (F.map (f >> g)) = G.map (F.map f) >> G.map (F.map g)
+    rw [F.map_comp, G.map_comp]
 
-scoped infixr:80 " ooo " => Functor.comp
+scoped infixr:80 " ooo " => CFunctor.comp
 
-end Functor
+end CFunctor

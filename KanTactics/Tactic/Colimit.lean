@@ -55,7 +55,7 @@ private def firstCtorOf (target : Expr) : MetaM (Option Name) := do
     we select the first. -/
 private def applyFirstConstructor (mvarId : MVarId) : TacticM (List MVarId) := do
   let target <- instantiateMVars (<- mvarId.getType)
-  (<- firstCtorOf target).elimM
+  (← firstCtorOf target).elim
     -- No constructor found: let apply fail with a clear message
     (do let ctor <- mkConstWithFreshMVarLevels `True
         mvarId.apply ctor)
@@ -90,7 +90,7 @@ def useKan (stx : Syntax) : KanComputation where
   execute := fun mvarId => do
     -- Inject into the coproduct, then fill the witness component
     let goals <- applyFirstConstructor mvarId
-    goals.head?.elimM (pure []) fun witnessGoal => do
+    goals.head?.elim (pure []) fun witnessGoal => do
       let witness <- Lean.Elab.Term.elabTerm stx (some (<- witnessGoal.getType))
       witnessGoal.assign witness
       pure goals.tail

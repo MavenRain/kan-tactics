@@ -86,7 +86,7 @@ def calcTransKan (midpoint : Syntax) : KanComputation where
   kind := .transport
   execute := fun mvarId => do
     let target <- instantiateMVars (<- mvarId.getType)
-    target.eq?.elimM
+    target.eq?.elim
       -- Not an equality: let refl produce a clear error
       (do mvarId.refl; pure [])
       fun (ty, lhs, rhs) => do
@@ -110,8 +110,8 @@ elab_rules : tactic
   | `(tactic| kan_rw [$rules,*]) => do
     let parsed <- rules.getElems.mapM fun rule => do
       match rule with
-      | `(kanRwRule| <- $t) => pure (t, true)
-      | `(kanRwRule| $t:term) => pure (t, false)
+      | `(kanRwRule| <- $t) => pure ((t : Syntax), true)
+      | `(kanRwRule| $t:term) => pure ((t : Syntax), false)
       | _ => Lean.Elab.throwUnsupportedSyntax
     kanExtend (rwKan parsed)
 

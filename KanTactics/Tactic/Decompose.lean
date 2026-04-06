@@ -56,7 +56,7 @@ def casesKan (stx : Syntax) : KanComputation where
   kind := .colimitDecomposition
   execute := fun mvarId => do
     let e <- Lean.Elab.Term.elabTerm stx none
-    (exprAsFVarId e).elimM
+    (exprAsFVarId e).elim
       -- Not a free variable: let cases fail with its own diagnostic
       (do let result <- mvarId.cases e.fvarId!
           pure (result.map (fun s => s.mvarId)).toList)
@@ -77,7 +77,7 @@ def rcasesKan (stx : Syntax) : KanComputation where
   kind := .colimitDecomposition
   execute := fun mvarId => do
     let e <- Lean.Elab.Term.elabTerm stx none
-    (exprAsFVarId e).elimM
+    (exprAsFVarId e).elim
       (do let result <- mvarId.cases e.fvarId!
           pure (result.map (fun s => s.mvarId)).toList)
       fun fvarId => do

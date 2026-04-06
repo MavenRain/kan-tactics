@@ -53,7 +53,7 @@ set_option autoImplicit false
     If no propositional change occurred, change the target definitionally. -/
 private def processSimpResult (mvarId : MVarId) (result : Simp.Result)
     : TacticM (List MVarId) :=
-  result.proof?.elimM
+  result.proof?.elim
     (do -- No propositional proof: definitional change only
       let newGoal <- mvarId.change result.expr
       pure [newGoal])
@@ -129,7 +129,7 @@ def simpOnlyKan (lemmaStxs : Array Syntax) : KanComputation where
     let mut simpTheorems : SimpTheorems := {}
     for stx in lemmaStxs do
       let e <- Lean.Elab.Term.elabTerm stx none
-      simpTheorems <- e.constName?.elimM
+      simpTheorems <- e.constName?.elim
         (pure simpTheorems)
         fun name => simpTheorems.addConst name
     let congrTheorems <- getSimpCongrTheorems
