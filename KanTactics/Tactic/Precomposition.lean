@@ -1,3 +1,5 @@
+import KanTactics.Tactic.Core
+
 /-!
 # KanTactics.Tactic.Precomposition
 
@@ -26,7 +28,6 @@ components of the colimit are left undetermined, to be filled in
 by subsequent tactic steps.
 -/
 
-import KanTactics.Tactic.Core
 
 open Lean Meta Elab Tactic
 

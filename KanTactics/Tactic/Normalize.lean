@@ -1,3 +1,6 @@
+import KanTactics.Tactic.Core
+import Lean.Meta.Tactic.Simp
+
 /-!
 # KanTactics.Tactic.Normalize
 
@@ -38,8 +41,6 @@ comma category, giving fine-grained control over which transports
 are allowed.
 -/
 
-import KanTactics.Tactic.Core
-import Lean.Meta.Tactic.Simp
 
 open Lean Meta Elab Tactic
 

@@ -1,3 +1,5 @@
+import Lean
+
 /-!
 # KanTactics.Tactic.Core
 
@@ -29,7 +31,6 @@ to `kanExtend`, demonstrating that the tactic is an instance of a
 Kan extension.
 -/
 
-import Lean
 
 open Lean Meta Elab Tactic
 

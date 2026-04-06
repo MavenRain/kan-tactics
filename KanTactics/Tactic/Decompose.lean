@@ -1,3 +1,5 @@
+import KanTactics.Tactic.Core
+
 /-!
 # KanTactics.Tactic.Decompose
 
@@ -35,7 +37,6 @@ NOTE: Full rcases pattern syntax (as in Mathlib) requires a custom
 parser.  This implementation provides basic recursive decomposition.
 -/
 
-import KanTactics.Tactic.Core
 
 open Lean Meta Elab Tactic
 

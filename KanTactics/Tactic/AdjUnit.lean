@@ -1,3 +1,5 @@
+import KanTactics.Tactic.Core
+
 /-!
 # KanTactics.Tactic.AdjUnit
 
@@ -33,7 +35,6 @@ Each intro step is a separate Kan extension, and their composition
 is again a Kan extension (Kan extensions compose along identity).
 -/
 
-import KanTactics.Tactic.Core
 
 open Lean Meta Elab Tactic
 

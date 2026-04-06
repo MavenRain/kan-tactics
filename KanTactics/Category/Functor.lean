@@ -1,3 +1,5 @@
+import KanTactics.Category.Basic
+
 /-!
 # KanTactics.Category.Functor
 
@@ -11,7 +13,6 @@ A functor preserves the categorical structure: it maps objects to
 objects and morphisms to morphisms, respecting identity and composition.
 -/
 
-import KanTactics.Category.Basic
 
 set_option autoImplicit false
 

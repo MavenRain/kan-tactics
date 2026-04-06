@@ -1,3 +1,5 @@
+import KanTactics.Category.Functor
+
 /-!
 # KanTactics.Category.NatTrans
 
@@ -16,7 +18,6 @@ In the Kan extension framework, natural transformations appear as:
 - The factorization condition relating them
 -/
 
-import KanTactics.Category.Functor
 
 set_option autoImplicit false
 

@@ -1,3 +1,5 @@
+import KanTactics.Tactic.Core
+
 /-!
 # KanTactics.Tactic.Colimit
 
@@ -33,7 +35,6 @@ Categorically, `use a` is the Kan extension that restricts the
 comma category to the single injection at a, then extends.
 -/
 
-import KanTactics.Tactic.Core
 
 open Lean Meta Elab Tactic
 

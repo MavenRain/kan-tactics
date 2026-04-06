@@ -1,3 +1,5 @@
+import KanTactics.Tactic.Core
+
 /-!
 # KanTactics.Tactic.InitialAlgebra
 
@@ -48,7 +50,6 @@ The colimit assembly is exactly the recursor:
     Nat.rec (base_proof) (step_proof) n : P(n)
 -/
 
-import KanTactics.Tactic.Core
 
 open Lean Meta Elab Tactic
 

@@ -1,3 +1,5 @@
+import KanTactics.Tactic.Core
+
 /-!
 # KanTactics.Tactic.Transport
 
@@ -39,7 +41,6 @@ We provide `kan_calc_trans` which performs a single transitivity step
 into iterated applications of this extension.
 -/
 
-import KanTactics.Tactic.Core
 
 open Lean Meta Elab Tactic
 

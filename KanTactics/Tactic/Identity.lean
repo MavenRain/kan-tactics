@@ -1,3 +1,5 @@
+import KanTactics.Tactic.Core
+
 /-!
 # KanTactics.Tactic.Identity
 
@@ -31,7 +33,6 @@ The comma category (Id | A) has a single object (A, id), and
 F provides the proof directly.  No subgoals are produced.
 -/
 
-import KanTactics.Tactic.Core
 
 open Lean Meta Elab Tactic
 

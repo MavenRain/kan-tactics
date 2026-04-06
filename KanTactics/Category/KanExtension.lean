@@ -1,3 +1,5 @@
+import KanTactics.Category.NatTrans
+
 /-!
 # KanTactics.Category.KanExtension
 
@@ -35,7 +37,6 @@ This library demonstrates it concretely: every standard Lean 4 tactic
 is an instance of a Kan extension in the category of proof states.
 -/
 
-import KanTactics.Category.NatTrans
 
 set_option autoImplicit false
 
