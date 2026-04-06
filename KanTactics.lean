@@ -1,0 +1,13 @@
+import KanTactics.Category.Basic
+import KanTactics.Category.Functor
+import KanTactics.Category.NatTrans
+import KanTactics.Category.KanExtension
+import KanTactics.Tactic.Core
+import KanTactics.Tactic.Identity
+import KanTactics.Tactic.Precomposition
+import KanTactics.Tactic.AdjUnit
+import KanTactics.Tactic.Transport
+import KanTactics.Tactic.Normalize
+import KanTactics.Tactic.Colimit
+import KanTactics.Tactic.Decompose
+import KanTactics.Tactic.InitialAlgebra
