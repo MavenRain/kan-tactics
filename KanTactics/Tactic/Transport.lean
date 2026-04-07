@@ -46,57 +46,6 @@ open Lean Meta Elab Tactic
 
 set_option autoImplicit false
 
-/-- Single rewrite step: transport the goal along one equality.
-
-    Categorically, this computes one Kan extension along the
-    substitution functor induced by the equality. -/
-private def rewriteStep (mvarId : MVarId) (stx : Syntax) (symm : Bool)
-    : TacticM MVarId := do
-  let heq <- Lean.Elab.Term.elabTerm stx none
-  let target <- instantiateMVars (<- mvarId.getType)
-  let result <- mvarId.rewrite target heq symm
-  mvarId.replaceTargetEq result.eNew result.eqProof
-
-/-- Rewrite as iterated transport Kan extensions.
-
-    Each rule h (or <-h for reverse) triggers a transport along
-    the equality h.  The transports compose sequentially.  After
-    all rewrites, the identity extension (rfl) is attempted at the
-    boundary to close trivially-reflexive goals. -/
-def rwKan (rules : Array (Syntax × Bool)) : KanComputation where
-  name := "transport (rw)"
-  kind := .transport
-  execute := fun mvarId => do
-    let mut goal := mvarId
-    for (stx, symm) in rules do
-      goal <- rewriteStep goal stx symm
-    -- Attempt to close with rfl (identity extension at the boundary)
-    (do goal.refl; pure []) <|> pure [goal]
-
-/-- Transitivity step for calc blocks.
-
-    Splits an equality goal a = c into two subgoals a = b and b = c,
-    for a given intermediate value b.  This is the Kan extension along
-    the composition morphism in the equality groupoid:
-
-    The comma category has one object (the pair of sub-equalities),
-    and the colimit assembly is Eq.trans. -/
-def calcTransKan (midpoint : Syntax) : KanComputation where
-  name := "transport (calc/trans)"
-  kind := .transport
-  execute := fun mvarId => do
-    let target <- instantiateMVars (<- mvarId.getType)
-    target.eq?.elim
-      -- Not an equality: let refl produce a clear error
-      (do mvarId.refl; pure [])
-      fun (ty, lhs, rhs) => do
-        let mid <- Lean.Elab.Term.elabTerm midpoint (some ty)
-        let goalLeft <- mkFreshExprMVar (<- mkEq lhs mid)
-        let goalRight <- mkFreshExprMVar (<- mkEq mid rhs)
-        let proof <- mkEqTrans goalLeft goalRight
-        mvarId.assign proof
-        pure [goalLeft.mvarId!, goalRight.mvarId!]
-
 -- Syntax for rewrite rules: each optionally preceded by <- for reverse
 
 declare_syntax_cat kanRwRule
@@ -113,7 +62,7 @@ elab_rules : tactic
       | `(kanRwRule| <- $t) => pure ((t : Syntax), true)
       | `(kanRwRule| $t:term) => pure ((t : Syntax), false)
       | _ => Lean.Elab.throwUnsupportedSyntax
-    kanExtend (rwKan parsed)
+    kanExtend (.transport parsed)
 
 /-- Transitivity: split a = c into a = b and b = c. -/
-elab "kan_calc_trans " mid:term : tactic => kanExtend (calcTransKan mid)
+elab "kan_calc_trans " mid:term : tactic => kanExtend (.transportTrans mid)

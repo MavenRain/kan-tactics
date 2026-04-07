@@ -38,40 +38,8 @@ open Lean Meta Elab Tactic
 
 set_option autoImplicit false
 
-/-- Reflexivity as the left Kan extension of Id along the diagonal.
-
-    The comma category (delta | (A, B)) is nonempty iff A and B are
-    definitionally equal, in which case the unique terminal object
-    yields Eq.refl A as the colimit.
-
-    Primary path: use the built-in refl check.
-    Fallback: close goals that are definitionally True. -/
-def rflKan : KanComputation where
-  name := "identity (rfl)"
-  kind := .identity
-  execute := fun mvarId => do
-    -- Primary: identity extension via reflexivity
-    (do mvarId.refl; pure []) <|> do
-    -- Fallback: close definitionally-True goals
-    let newGoal <- mvarId.change (mkConst ``True)
-    newGoal.assign (mkConst ``True.intro)
-    pure []
-
-/-- Exact term as the trivial (identity) Kan extension.
-
-    The comma category (Id | goal) has exactly one object,
-    and the diagram functor F provides the proof directly. -/
-def exactKan (stx : Syntax) : KanComputation where
-  name := "identity (exact)"
-  kind := .identity
-  execute := fun mvarId => do
-    let target <- mvarId.getType
-    let e <- Lean.Elab.Term.elabTerm stx (some target)
-    mvarId.assign e
-    pure []
-
 /-- Reflexivity: close a = a via the identity Kan extension. -/
-elab "kan_rfl" : tactic => kanExtend rflKan
+elab "kan_rfl" : tactic => kanExtend .identity
 
 /-- Exact: close a goal with a specific proof term. -/
-elab "kan_exact " e:term : tactic => kanExtend (exactKan e)
+elab "kan_exact " e:term : tactic => kanExtend (.identityExact e)

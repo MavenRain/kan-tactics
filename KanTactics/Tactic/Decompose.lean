@@ -42,50 +42,8 @@ open Lean Meta Elab Tactic
 
 set_option autoImplicit false
 
-/-- Cases as coproduct decomposition.
-
-    Decomposes a hypothesis h of inductive type into one subgoal
-    per constructor.  Each subgoal introduces the constructor's
-    arguments into the context.
-
-    Comma category (K | h) has n objects for n constructors.
-    The Kan extension produces n subgoals, one per constructor.
-    Assembly: the type's recursor applied to all branch proofs. -/
-def casesKan (stx : Syntax) : KanComputation where
-  name := "coproduct decomposition (cases)"
-  kind := .colimitDecomposition
-  execute := fun mvarId => do
-    let e <- Lean.Elab.Term.elabTerm stx none
-    (exprAsFVarId e).elim
-      -- Not a free variable: let cases fail with its own diagnostic
-      (do let result <- mvarId.cases e.fvarId!
-          pure (result.map (fun s => s.mvarId)).toList)
-      fun fvarId => do
-        let result <- mvarId.cases fvarId
-        pure (result.map (fun s => s.mvarId)).toList
-
-/-- Recursive cases as iterated coproduct decomposition.
-
-    Applies case analysis to the given hypothesis.  In its basic form,
-    this is equivalent to `kan_cases`.  A full implementation would
-    support nested patterns for deep decomposition.
-
-    Categorically: the composition of Kan extensions along a chain
-    of coproduct decompositions, one per nesting level. -/
-def rcasesKan (stx : Syntax) : KanComputation where
-  name := "iterated coproduct decomposition (rcases)"
-  kind := .colimitDecomposition
-  execute := fun mvarId => do
-    let e <- Lean.Elab.Term.elabTerm stx none
-    (exprAsFVarId e).elim
-      (do let result <- mvarId.cases e.fvarId!
-          pure (result.map (fun s => s.mvarId)).toList)
-      fun fvarId => do
-        let result <- mvarId.cases fvarId
-        pure (result.map (fun s => s.mvarId)).toList
-
 /-- Case analysis: decompose a hypothesis into one subgoal per constructor. -/
-elab "kan_cases " e:term : tactic => kanExtend (casesKan e)
+elab "kan_cases " e:term : tactic => kanExtend (.colimitDecomposition e)
 
 /-- Recursive case analysis (basic form; equivalent to kan_cases). -/
-elab "kan_rcases " e:term : tactic => kanExtend (rcasesKan e)
+elab "kan_rcases " e:term : tactic => kanExtend (.colimitDecomposition e)

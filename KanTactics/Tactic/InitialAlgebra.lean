@@ -55,37 +55,5 @@ open Lean Meta Elab Tactic
 
 set_option autoImplicit false
 
-/-- Induction as Kan extension along the initial algebra structure map.
-
-    Decomposes a goal P(n) into base cases and inductive steps
-    according to the constructors of the inductive type of n.
-
-    Each constructor contributes one object to the comma category:
-    - Non-recursive constructors yield base-case subgoals
-    - Recursive constructors yield step subgoals with IH
-
-    The assembly applies the recursor (the unique initial algebra
-    morphism) to combine all branch proofs. -/
-def inductionKan (stx : Syntax) : KanComputation where
-  name := "initial algebra (induction)"
-  kind := .initialAlgebra
-  execute := fun mvarId => do
-    let e <- Lean.Elab.Term.elabTerm stx none
-    (exprAsFVarId e).elim
-      -- Not a free variable: the recursor application will fail
-      -- with a clear diagnostic from the kernel
-      (do let recConst <- mkConstWithFreshMVarLevels `Nat.rec
-          mvarId.apply recConst)
-      fun fvarId => do
-        -- Determine the inductive type and its recursor
-        let localDecl <- fvarId.getDecl
-        let type <- instantiateMVars localDecl.type
-        let typeName := type.getAppFn.constName?.getD Name.anonymous
-        let recName := typeName ++ `rec
-        -- The recursor IS the unique initial algebra morphism.
-        -- Applying it computes the Kan extension at this goal.
-        let recConst <- mkConstWithFreshMVarLevels recName
-        mvarId.apply recConst
-
 /-- Structural induction via the initial algebra Kan extension. -/
-elab "kan_induction " e:term : tactic => kanExtend (inductionKan e)
+elab "kan_induction " e:term : tactic => kanExtend (.initialAlgebra e)
