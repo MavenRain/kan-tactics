@@ -24,11 +24,10 @@ The left Kan extension (Lan_K F)(goal) computes:
 
 ## This Module
 
-Defines `KanComputation` (the specification of a single Kan extension
-computation) and `kanExtend` (the universal entry point).  Every tactic
-in this library constructs a specific `KanComputation` and passes it
-to `kanExtend`, demonstrating that the tactic is an instance of a
-Kan extension.
+Defines `name` and `execute` (the specification of each Kan extension
+kind) and `kanExtend` (the universal entry point).  Every tactic
+in this library invokes `kanExtend` with a specific `KanExtensionKind`,
+demonstrating that the tactic is an instance of a Kan extension.
 -/
 
 
@@ -96,36 +95,45 @@ inductive KanExtensionKind where
   | initialAlgebra
   deriving Repr, BEq
 
-/-- A Kan extension computation.
+/-- Human-readable name for each Kan extension kind. -/
+def name (kind : KanExtensionKind) : String :=
+  match kind with
+  | .identity => "identity"
+  | .precomposition => "precomposition"
+  | .adjunctionUnit => "adjunction unit"
+  | .transport => "transport"
+  | .normalize => "normalize"
+  | .colimitInjection => "colimit injection"
+  | .colimitDecomposition => "colimit decomposition"
+  | .initialAlgebra => "initial algebra"
 
-    Encapsulates the data needed to execute a specific Kan extension
-    on a proof goal:
+/-- Execute the Kan extension computation for a given kind on a goal.
 
-    - `name`: human-readable identifier for diagnostics
-    - `kind`: which categorical construction this embodies
-    - `execute`: the actual computation, which
-        (1) inspects the goal (computing the comma category K | goal),
-        (2) assigns a proof term to the goal (the colimit cocone), and
-        (3) returns any new subgoals (the components of the colimit).
+    The implementation:
+    (1) inspects the goal (computing the comma category K | goal),
+    (2) assigns a proof term to the goal (the colimit cocone), and
+    (3) returns any new subgoals (the components of the colimit).
 
-    The `execute` function must assign `mvarId` and must NOT call
-    `setGoals` or `replaceMainGoal` (the caller handles goal management). -/
-structure KanComputation where
-  /-- Human-readable name for this extension. -/
-  name : String
-  /-- The categorical kind of this extension. -/
-  kind : KanExtensionKind
-  /-- Execute the extension on the given goal.
-      Must assign `mvarId`.  Returns the list of new subgoals. -/
-  execute : MVarId -> TacticM (List MVarId)
+    Must assign `mvarId` and must NOT call `setGoals` or
+    `replaceMainGoal` (the caller handles goal management). -/
+def execute (kind : KanExtensionKind) : MVarId -> TacticM (List MVarId) :=
+  match kind with
+  | .identity => sorry
+  | .precomposition => sorry
+  | .adjunctionUnit => sorry
+  | .transport => sorry
+  | .normalize => sorry
+  | .colimitInjection => sorry
+  | .colimitDecomposition => sorry
+  | .initialAlgebra => sorry
 
 /-- Execute a Kan extension tactic.
 
     This is **the** universal entry point.  Every tactic in this library
-    constructs a `KanComputation` and passes it here.  The function:
+    invokes this with a specific `KanExtensionKind`.  The function:
 
     1. Retrieves the current main goal
-    2. Delegates to `comp.execute` which computes the comma category,
+    2. Delegates to `execute kind` which computes the comma category,
        applies F, and assembles via the colimit
     3. Replaces the main goal with any new subgoals
 
@@ -133,8 +141,8 @@ structure KanComputation where
     demonstrate that each tactic is an instance of a Kan extension.
 
     Categorically: compute (Lan_K F)(goal) via the colimit formula. -/
-def kanExtend (comp : KanComputation) : TacticM Unit := do
+def kanExtend (kind : KanExtensionKind) : TacticM Unit := do
   let mvarId <- getMainGoal
   mvarId.withContext do
-    let newGoals <- comp.execute mvarId
+    let newGoals <- execute kind mvarId
     replaceMainGoal newGoals

@@ -38,11 +38,11 @@ jobs:
           key: lake-${{ runner.os }}-${{ hashFiles('lean-toolchain', 'lakefile.lean', 'lake-manifest.json') }}
           restore-keys: lake-${{ runner.os }}-
 
-      - name: Build library
-        run: lake build
-
-      - name: Fetch doc-gen4
+      - name: Fetch dependencies (including doc-gen4)
         run: lake -Kenv=dev update
+
+      - name: Build library
+        run: lake -Kenv=dev build
 
       - name: Build documentation
         run: lake -Kenv=dev build KanTactics:docs
