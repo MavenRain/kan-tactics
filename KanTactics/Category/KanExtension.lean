@@ -103,6 +103,7 @@ theorem lan_along_identity (F : CFunctor C E) :
     fac := fun alpha X => Category.id_comp (alpha.app X)
     uniq := fun alpha sigma h d => by
       have hd := h d
-      simp only [NatTrans.identity, CFunctor.identity, id_comp] at hd
+      simp only [NatTrans.identity, CFunctor.identity] at hd
+      rw [id_comp] at hd
       exact hd
   }, trivial⟩

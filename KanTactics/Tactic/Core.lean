@@ -224,21 +224,17 @@ def execute (kind : KanExtensionKind) : MVarId -> TacticM (List MVarId) :=
   | .normalize => fun mvarId => do
     let simpTheorems <- getSimpTheorems
     let congrTheorems <- getSimpCongrTheorems
-    let ctx : Simp.Context := {
-      simpTheorems := #[simpTheorems]
-      congrTheorems
-    }
+    let ctx <- Simp.mkContext (simpTheorems := #[simpTheorems]) (congrTheorems := congrTheorems)
     let target <- instantiateMVars (<- mvarId.getType)
     let (result, _) <- Simp.main target ctx
     processSimpResult mvarId result
   | .normalizeDSimp => fun mvarId => do
     let simpTheorems <- getSimpTheorems
     let congrTheorems <- getSimpCongrTheorems
-    let ctx : Simp.Context := {
-      simpTheorems := #[simpTheorems]
-      congrTheorems
-      config := { zeta := true, beta := true, eta := true, iota := true, proj := true }
-    }
+    let ctx <- Simp.mkContext
+      (config := { zeta := true, beta := true, eta := true, iota := true, proj := true })
+      (simpTheorems := #[simpTheorems])
+      (congrTheorems := congrTheorems)
     let target <- instantiateMVars (<- mvarId.getType)
     let (result, _) <- Simp.main target ctx
     let newGoal <- mvarId.change result.expr
@@ -251,10 +247,7 @@ def execute (kind : KanExtensionKind) : MVarId -> TacticM (List MVarId) :=
         (pure simpTheorems)
         fun n => simpTheorems.addConst n
     let congrTheorems <- getSimpCongrTheorems
-    let ctx : Simp.Context := {
-      simpTheorems := #[simpTheorems]
-      congrTheorems
-    }
+    let ctx <- Simp.mkContext (simpTheorems := #[simpTheorems]) (congrTheorems := congrTheorems)
     let target <- instantiateMVars (<- mvarId.getType)
     let (result, _) <- Simp.main target ctx
     processSimpResult mvarId result
