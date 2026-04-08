@@ -1,11 +1,12 @@
 import KanTactics.Tactic.Core
+import KanTactics.Tactic.Precomposition
 
 /-!
 # KanTactics.Tactic.Transport
 
 Tactics derived from transport Kan extensions: `kan_rw` and `kan_calc_trans`.
 
-## rw as transport along an equality path
+## Primitive: kan_rw (transport along an equality path)
 
 Given h : a = b, rewriting with h transports the goal along the
 equality path from a to b (or b to a for <-h).
@@ -24,7 +25,7 @@ Multiple rewrites compose as iterated transport Kan extensions:
 
 Since Kan extensions compose, the chain is itself a Kan extension.
 
-## calc as composed transports
+## Derived: kan_calc_trans (composed transports via transitivity)
 
 A calc block chains transitivities:
 
@@ -33,12 +34,11 @@ A calc block chains transitivities:
          _ = d := p3
 
 Each step is a transport Kan extension.  The full block is their
-sequential composition, which is again a Kan extension (the composite
-of Kan extensions along a chain of equalities in the groupoid).
+sequential composition, which is again a Kan extension.
 
-We provide `kan_calc_trans` which performs a single transitivity step
-(splitting a = c into a = b and b = c).  Full calc blocks decompose
-into iterated applications of this extension.
+`kan_calc_trans b` splits a = c into a = b and b = c.  This is
+derived via `kan_refine (@Eq.trans _ _ b _ _ _)`, which produces
+exactly the two subgoals.
 -/
 
 
@@ -52,7 +52,7 @@ declare_syntax_cat kanRwRule
 syntax "<-" term : kanRwRule
 syntax term : kanRwRule
 
-/-- Rewrite with a list of equalities via iterated transport. -/
+/-- Rewrite with a list of equalities via iterated transport.  (Primitive) -/
 syntax "kan_rw" "[" kanRwRule,* "]" : tactic
 
 elab_rules : tactic
@@ -64,5 +64,7 @@ elab_rules : tactic
       | _ => Lean.Elab.throwUnsupportedSyntax
     kanExtend (.transport parsed)
 
-/-- Transitivity: split a = c into a = b and b = c. -/
-elab "kan_calc_trans " mid:term : tactic => kanExtend (.transportTrans mid)
+/-- Transitivity: split a = c into a = b and b = c.
+    Derived from `kan_refine` via `@Eq.trans _ _ b _ _ _`. -/
+elab "kan_calc_trans " mid:term : tactic => do
+  evalTactic (<- `(tactic| kan_refine (@Eq.trans _ _ $mid _ _ _)))

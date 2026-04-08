@@ -6,7 +6,7 @@ import KanTactics.Tactic.Core
 Tactics derived from colimit decomposition Kan extensions:
 `kan_cases` and `kan_rcases`.
 
-## cases as coproduct elimination
+## Primitive: kan_cases (coproduct elimination)
 
 An inductive type T ~= A1 + A2 + ... + An is a coproduct.
 To prove P given h : T, we must prove P for each component:
@@ -26,7 +26,7 @@ Each object contributes a subgoal: prove P with the constructor's
 arguments in context.  The assembly uses the type's recursor to
 combine the per-constructor proofs.
 
-## rcases as iterated decomposition
+## Derived: kan_rcases (synonym, placeholder for iterated decomposition)
 
 rcases recursively applies cases, decomposing nested inductive
 types in one step.  This is the composition of multiple Kan extensions,
@@ -34,7 +34,8 @@ one per level of nesting.  Since Kan extensions compose, the recursive
 decomposition is itself a single Kan extension.
 
 NOTE: Full rcases pattern syntax (as in Mathlib) requires a custom
-parser.  This implementation provides basic recursive decomposition.
+parser.  This implementation provides the basic form as a synonym
+for `kan_cases`.
 -/
 
 
@@ -42,8 +43,10 @@ open Lean Meta Elab Tactic
 
 set_option autoImplicit false
 
-/-- Case analysis: decompose a hypothesis into one subgoal per constructor. -/
+/-- Case analysis: decompose a hypothesis into one subgoal per constructor.  (Primitive) -/
 elab "kan_cases " e:term : tactic => kanExtend (.colimitDecomposition e)
 
-/-- Recursive case analysis (basic form; equivalent to kan_cases). -/
-elab "kan_rcases " e:term : tactic => kanExtend (.colimitDecomposition e)
+/-- Recursive case analysis (basic form; synonym for kan_cases).
+    Derived: currently identical to `kan_cases`. -/
+elab "kan_rcases " e:term : tactic => do
+  evalTactic (<- `(tactic| kan_cases $e))

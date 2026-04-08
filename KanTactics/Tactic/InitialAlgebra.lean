@@ -1,4 +1,5 @@
 import KanTactics.Tactic.Core
+import KanTactics.Tactic.Precomposition
 
 /-!
 # KanTactics.Tactic.InitialAlgebra
@@ -20,7 +21,7 @@ The recursor T.rec is the unique algebra morphism from the initial
 algebra to any other F-algebra.  This is precisely the universal
 property of the Kan extension.
 
-## Induction as Kan Extension
+## Derived: kan_induction (via kan_apply on the recursor)
 
 The functor K embeds "algebra components" into T:
 
@@ -48,6 +49,9 @@ For Nat, this gives:
 The colimit assembly is exactly the recursor:
 
     Nat.rec (base_proof) (step_proof) n : P(n)
+
+Derived by looking up the recursor name from the hypothesis type
+and delegating to `kan_apply`.
 -/
 
 
@@ -55,5 +59,19 @@ open Lean Meta Elab Tactic
 
 set_option autoImplicit false
 
-/-- Structural induction via the initial algebra Kan extension. -/
-elab "kan_induction " e:term : tactic => kanExtend (.initialAlgebra e)
+/-- Structural induction via the initial algebra Kan extension.
+    Derived from `kan_apply`: looks up the recursor for the
+    hypothesis type, then delegates. -/
+elab "kan_induction " e:term : tactic => do
+  let mvarId <- getMainGoal
+  mvarId.withContext do
+    let expr <- Lean.Elab.Term.elabTerm e none
+    let recName <- (exprAsFVarId expr).elim
+      (pure `Nat.rec)
+      fun fvarId => do
+        let localDecl <- fvarId.getDecl
+        let type <- instantiateMVars localDecl.type
+        let typeName := type.getAppFn.constName?.getD Name.anonymous
+        pure (typeName ++ `rec)
+    let stx := mkIdent recName
+    evalTactic (<- `(tactic| kan_apply $stx))

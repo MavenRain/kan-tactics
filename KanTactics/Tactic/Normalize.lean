@@ -6,7 +6,10 @@ import KanTactics.Tactic.Core
 Tactics derived from normalization Kan extensions:
 `kan_simp`, `kan_dsimp`, and `kan_simp_only`.
 
-## simp as automated colimit search
+All three are primitive.  They use different lemma sets and different
+result-processing paths; none can simulate another.
+
+## simp as automated colimit search (Primitive)
 
 The simplifier searches for a path through the "transport category",
 the category whose objects are types/propositions and whose morphisms
@@ -25,14 +28,14 @@ Categorically, simp computes the free Kan extension: it searches
 the full comma category of available simp lemmas for a factorization
 that simplifies the goal.
 
-## dsimp: definitional normalization
+## dsimp: definitional normalization (Primitive)
 
 dsimp restricts the transport category to definitional equalities,
 which form a sub-groupoid of the full equality groupoid.  Since
 definitional equalities are checked by the kernel, dsimp produces
 a definitionally equal term with no propositional proof obligation.
 
-## simp only: restricted normalization
+## simp only: restricted normalization (Primitive)
 
 simp only [lemmas] restricts the comma category to a specified set
 of simp lemmas.  Only the given lemmas contribute objects to the
@@ -45,12 +48,12 @@ open Lean Meta Elab Tactic
 
 set_option autoImplicit false
 
-/-- Simplify using all registered lemmas. -/
+/-- Simplify using all registered lemmas.  (Primitive) -/
 elab "kan_simp" : tactic => kanExtend .normalize
 
-/-- Definitionally simplify (no propositional proofs generated). -/
+/-- Definitionally simplify (no propositional proofs generated).  (Primitive) -/
 elab "kan_dsimp" : tactic => kanExtend .normalizeDSimp
 
-/-- Simplify using only the specified lemmas. -/
+/-- Simplify using only the specified lemmas.  (Primitive) -/
 elab "kan_simp_only" "[" lemmas:term,* "]" : tactic =>
   kanExtend (.normalizeSimpOnly lemmas.getElems)

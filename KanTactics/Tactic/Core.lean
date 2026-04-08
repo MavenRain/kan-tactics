@@ -25,10 +25,23 @@ The left Kan extension (Lan_K F)(goal) computes:
 
 ## This Module
 
-Defines `name` and `execute` (the specification of each Kan extension
-kind) and `kanExtend` (the universal entry point).  Every tactic
-in this library invokes `kanExtend` with a specific `KanExtensionKind`,
-demonstrating that the tactic is an instance of a Kan extension.
+Defines the **minimal spanning set** of 9 primitive Kan extension kinds.
+Every other tactic in the library is derived by composing these primitives.
+
+The 9 primitives, grouped by categorical origin:
+
+- **Identity**: `identityExact` (provide a proof term)
+- **Precomposition**: `precomposition` (apply), `precompositionRefine` (refine)
+- **Adjunction unit**: `adjunctionUnitIntro` (introduce one binder)
+- **Transport**: `transport` (rewrite by equalities)
+- **Normalization**: `normalize` (simp), `normalizeDSimp` (dsimp),
+  `normalizeSimpOnly` (simp only)
+- **Decomposition**: `colimitDecomposition` (case analysis)
+
+Derived tactics (kan_rfl, kan_intros, kan_constructor, kan_use,
+kan_exists, kan_rcases, kan_calc_trans, kan_induction) compose these
+primitives, preserving the categorical interpretation while eliminating
+redundancy from the core.
 -/
 
 
@@ -71,7 +84,7 @@ def firstCtorOf (target : Expr) : MetaM (Option Name) := do
 
     Categorically, this computes one Kan extension along the
     substitution functor induced by the equality. -/
-private def rewriteStep (mvarId : MVarId) (stx : Syntax) (symm : Bool)
+def rewriteStep (mvarId : MVarId) (stx : Syntax) (symm : Bool)
     : TacticM MVarId := do
   let heq <- Lean.Elab.Term.elabTerm stx none
   let target <- instantiateMVars (<- mvarId.getType)
@@ -83,7 +96,7 @@ private def rewriteStep (mvarId : MVarId) (stx : Syntax) (symm : Bool)
     If a propositional proof was produced, replace the target.
     If the simplified expression is True, close the goal.
     If no propositional change occurred, change the target definitionally. -/
-private def processSimpResult (mvarId : MVarId) (result : Simp.Result)
+def processSimpResult (mvarId : MVarId) (result : Simp.Result)
     : TacticM (List MVarId) :=
   result.proof?.elim
     (do let newGoal <- mvarId.change result.expr
@@ -96,74 +109,83 @@ private def processSimpResult (mvarId : MVarId) (result : Simp.Result)
       else
         pure [newGoal]
 
-/-- Classification of Kan extensions by their categorical origin.
+/-- The minimal spanning set of Kan extension kinds.
 
-    Each variant identifies the categorical construction that
-    gives rise to a family of tactics, carrying any arguments
-    needed by the extension. -/
+    Each variant identifies an independent categorical construction.
+    No variant is expressible as a composition of others.  All other
+    tactics in the library are derived from these 9 primitives. -/
 inductive KanExtensionKind where
-  /-- Extension of id along the diagonal.  Closes the goal directly
-      when source and target are definitionally equal. -/
-  | identity
-  /-- Trivial identity extension: the given term proves the goal. -/
+  /-- Trivial identity extension: the given term proves the goal.
+
+      Given a proof term e : A, the functor F maps the goal A to e.
+      Along the identity embedding K = Id:
+
+          (Lan_Id F)(A) = F(A) = e
+
+      The comma category (Id | A) has a single object (A, id). -/
   | identityExact (stx : Syntax)
   /-- Backward extension along a morphism.  Reduces a goal of type B
-      to subgoals by applying the given term. -/
+      to subgoals by applying the given term.
+
+      Given f : A1 -> ... -> An -> B, the comma category (K | B) has a
+      single object when f's return type unifies with B, projecting to
+      n subgoals.  Uses unconstrained elaboration + `mvarId.apply`. -/
   | precomposition (stx : Syntax)
   /-- Partial precomposition with explicit holes.  Each placeholder
-      in the term becomes a subgoal. -/
-  | precompositionRefine (stx : Syntax)
-  /-- Unit of the exponential adjunction.  Introduces all leading
-      binders into the context. -/
-  | adjunctionUnit
-  /-- Single adjunction unit.  Introduces one binder with the given name. -/
-  | adjunctionUnitIntro (name : Name)
-  /-- Iterated adjunction units with explicit names. -/
-  | adjunctionUnitIntros (names : Array Name)
-  /-- Transport along equality paths.  Rewrites the goal by each rule
-      in sequence (true = reverse direction). -/
-  | transport (rules : Array (Syntax × Bool))
-  /-- Transport via transitivity.  Splits a = c into a = b and b = c
-      at the given midpoint. -/
-  | transportTrans (midpoint : Syntax)
-  /-- Automated search in the transport category.  Simplifies the goal
-      using all registered simp lemmas. -/
-  | normalize
-  /-- Definitional normalization only (beta, delta, iota, zeta, eta). -/
-  | normalizeDSimp
-  /-- Normalization restricted to the given set of simp lemmas. -/
-  | normalizeSimpOnly (lemmas : Array Syntax)
-  /-- Injection into a coproduct/sigma.  Selects the first constructor
-      and reduces to its argument types. -/
-  | colimitInjection
-  /-- Coproduct injection with a given witness for the first argument. -/
-  | colimitInjectionUse (stx : Syntax)
-  /-- Decomposition at a coproduct.  Splits a hypothesis into cases,
-      one per constructor of the inductive type. -/
-  | colimitDecomposition (stx : Syntax)
-  /-- Extension along an initial algebra structure map.
-      Structural induction on an inductive type. -/
-  | initialAlgebra (stx : Syntax)
+      in the term becomes a subgoal.
 
-/-- Human-readable name for each Kan extension kind. -/
+      Uses goal-directed elaboration (`elabTerm stx (some target)`)
+      and direct assignment, collecting unassigned metavariables. -/
+  | precompositionRefine (stx : Syntax)
+  /-- Single adjunction unit.  Introduces one binder with the given name.
+
+      The unit of the exponential adjunction Hom(Gamma x A, B) ~=
+      Hom(Gamma, A -> B) introduces x : A into context, yielding
+      goal B with A available. -/
+  | adjunctionUnitIntro (name : Name)
+  /-- Transport along equality paths.  Rewrites the goal by each rule
+      in sequence (true = reverse direction).
+
+      Each rewrite step is a Kan extension along the substitution
+      functor induced by the equality.  Their composition is again
+      a Kan extension. -/
+  | transport (rules : Array (Syntax × Bool))
+  /-- Automated search in the transport category.  Simplifies the goal
+      using all registered simp lemmas.
+
+      The simplifier searches for a factorization through the full
+      comma category of available simp lemmas. -/
+  | normalize
+  /-- Definitional normalization only (beta, delta, iota, zeta, eta).
+
+      Restricts the transport category to definitional equalities,
+      which form a sub-groupoid of the full equality groupoid. -/
+  | normalizeDSimp
+  /-- Normalization restricted to the given set of simp lemmas.
+
+      Restricts the comma category to a specified set of lemmas,
+      giving fine-grained control over which transports are allowed. -/
+  | normalizeSimpOnly (lemmas : Array Syntax)
+  /-- Decomposition at a coproduct.  Splits a hypothesis into cases,
+      one per constructor of the inductive type.
+
+      The Kan extension at goal P decomposes the comma category
+      (K | h : T) into one object per constructor, each contributing
+      a subgoal with the constructor's arguments in context. -/
+  | colimitDecomposition (stx : Syntax)
+
+/-- Human-readable name for each primitive Kan extension kind. -/
 def name (kind : KanExtensionKind) : String :=
   match kind with
-  | .identity => "identity (rfl)"
   | .identityExact _ => "identity (exact)"
   | .precomposition _ => "precomposition (apply)"
   | .precompositionRefine _ => "precomposition (refine)"
-  | .adjunctionUnit => "adjunction unit (intros *)"
   | .adjunctionUnitIntro _ => "adjunction unit (intro)"
-  | .adjunctionUnitIntros _ => "adjunction unit (intros)"
   | .transport _ => "transport (rw)"
-  | .transportTrans _ => "transport (calc/trans)"
   | .normalize => "normalize (simp)"
   | .normalizeDSimp => "normalize (dsimp)"
   | .normalizeSimpOnly _ => "normalize (simp only)"
-  | .colimitInjection => "colimit injection (constructor)"
-  | .colimitInjectionUse _ => "colimit injection (use)"
   | .colimitDecomposition _ => "colimit decomposition (cases)"
-  | .initialAlgebra _ => "initial algebra (induction)"
 
 /-- Execute the Kan extension computation for a given kind on a goal.
 
@@ -176,11 +198,6 @@ def name (kind : KanExtensionKind) : String :=
     `replaceMainGoal` (the caller handles goal management). -/
 def execute (kind : KanExtensionKind) : MVarId -> TacticM (List MVarId) :=
   match kind with
-  | .identity => fun mvarId =>
-    (do mvarId.refl; pure []) <|> do
-      let newGoal <- mvarId.change (mkConst ``True)
-      newGoal.assign (mkConst ``True.intro)
-      pure []
   | .identityExact stx => fun mvarId => do
     let target <- mvarId.getType
     let e <- Lean.Elab.Term.elabTerm stx (some target)
@@ -196,31 +213,12 @@ def execute (kind : KanExtensionKind) : MVarId -> TacticM (List MVarId) :=
     let unassigned <- (<- getMVars e).filterM fun m => do
       return !(<- m.isAssigned)
     pure unassigned.toList
-  | .adjunctionUnit => fun mvarId => do
-    let (_, newMVarId) <- mvarId.intros
-    pure [newMVarId]
   | .adjunctionUnitIntro n => fun mvarId => do
     let (_, newMVarId) <- mvarId.intro n
     pure [newMVarId]
-  | .adjunctionUnitIntros names => fun mvarId => do
-    let (_, newMVarId) <- mvarId.introN names.size names.toList
-    pure [newMVarId]
   | .transport rules => fun mvarId => do
-    let mut goal := mvarId
-    for (stx, symm) in rules do
-      goal <- rewriteStep goal stx symm
+    let goal <- rules.foldlM (fun g (stx, symm) => rewriteStep g stx symm) mvarId
     (do goal.refl; pure []) <|> pure [goal]
-  | .transportTrans midpoint => fun mvarId => do
-    let target <- instantiateMVars (<- mvarId.getType)
-    target.eq?.elim
-      (do mvarId.refl; pure [])
-      fun (ty, lhs, rhs) => do
-        let mid <- Lean.Elab.Term.elabTerm midpoint (some ty)
-        let goalLeft <- mkFreshExprMVar (<- mkEq lhs mid)
-        let goalRight <- mkFreshExprMVar (<- mkEq mid rhs)
-        let proof <- mkEqTrans goalLeft goalRight
-        mvarId.assign proof
-        pure [goalLeft.mvarId!, goalRight.mvarId!]
   | .normalize => fun mvarId => do
     let simpTheorems <- getSimpTheorems
     let congrTheorems <- getSimpCongrTheorems
@@ -240,37 +238,16 @@ def execute (kind : KanExtensionKind) : MVarId -> TacticM (List MVarId) :=
     let newGoal <- mvarId.change result.expr
     pure [newGoal]
   | .normalizeSimpOnly lemmaStxs => fun mvarId => do
-    let mut simpTheorems : SimpTheorems := {}
-    for stx in lemmaStxs do
+    let simpTheorems <- lemmaStxs.foldlM (fun acc stx => do
       let e <- Lean.Elab.Term.elabTerm stx none
-      simpTheorems <- e.constName?.elim
-        (pure simpTheorems)
-        fun n => simpTheorems.addConst n
+      e.constName?.elim
+        (pure acc)
+        fun n => acc.addConst n) ({} : SimpTheorems)
     let congrTheorems <- getSimpCongrTheorems
     let ctx <- Simp.mkContext (simpTheorems := #[simpTheorems]) (congrTheorems := congrTheorems)
     let target <- instantiateMVars (<- mvarId.getType)
     let (result, _) <- Simp.main target ctx
     processSimpResult mvarId result
-  | .colimitInjection => fun mvarId => do
-    let target <- instantiateMVars (<- mvarId.getType)
-    (<- firstCtorOf target).elim
-      (do let ctor <- mkConstWithFreshMVarLevels `True
-          mvarId.apply ctor)
-      fun ctorName => do
-        let ctor <- mkConstWithFreshMVarLevels ctorName
-        mvarId.apply ctor
-  | .colimitInjectionUse stx => fun mvarId => do
-    let target <- instantiateMVars (<- mvarId.getType)
-    let goals <- (<- firstCtorOf target).elim
-      (do let ctor <- mkConstWithFreshMVarLevels `True
-          mvarId.apply ctor)
-      fun ctorName => do
-        let ctor <- mkConstWithFreshMVarLevels ctorName
-        mvarId.apply ctor
-    goals.head?.elim (pure []) fun witnessGoal => do
-      let witness <- Lean.Elab.Term.elabTerm stx (some (<- witnessGoal.getType))
-      witnessGoal.assign witness
-      pure goals.tail
   | .colimitDecomposition stx => fun mvarId => do
     let e <- Lean.Elab.Term.elabTerm stx none
     (exprAsFVarId e).elim
@@ -279,31 +256,14 @@ def execute (kind : KanExtensionKind) : MVarId -> TacticM (List MVarId) :=
       fun fvarId => do
         let result <- mvarId.cases fvarId
         pure (result.map (fun s => s.mvarId)).toList
-  | .initialAlgebra stx => fun mvarId => do
-    let e <- Lean.Elab.Term.elabTerm stx none
-    (exprAsFVarId e).elim
-      (do let recConst <- mkConstWithFreshMVarLevels `Nat.rec
-          mvarId.apply recConst)
-      fun fvarId => do
-        let localDecl <- fvarId.getDecl
-        let type <- instantiateMVars localDecl.type
-        let typeName := type.getAppFn.constName?.getD Name.anonymous
-        let recName := typeName ++ `rec
-        let recConst <- mkConstWithFreshMVarLevels recName
-        mvarId.apply recConst
 
 /-- Execute a Kan extension tactic.
 
-    This is **the** universal entry point.  Every tactic in this library
-    invokes this with a specific `KanExtensionKind`.  The function:
+    This is **the** universal entry point for primitive tactics.
+    Every primitive tactic invokes this with a specific `KanExtensionKind`.
 
-    1. Retrieves the current main goal
-    2. Delegates to `execute kind` which computes the comma category,
-       applies F, and assembles via the colimit
-    3. Replaces the main goal with any new subgoals
-
-    By routing every tactic through this single function, we
-    demonstrate that each tactic is an instance of a Kan extension.
+    Derived tactics compose primitive tactics via `evalTactic` rather than
+    adding variants to this enum, keeping the core minimal.
 
     Categorically: compute (Lan_K F)(goal) via the colimit formula. -/
 def kanExtend (kind : KanExtensionKind) : TacticM Unit := do
