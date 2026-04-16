@@ -1,5 +1,5 @@
 import Lean
-import Lean.Meta.Tactic.Simp
+import Lean.Meta.Tactic.Simp  -- SimpTheorems data access only; Simp.main is not called
 
 /-!
 # KanTactics.Tactic.Core
@@ -83,31 +83,120 @@ def firstCtorOf (target : Expr) : MetaM (Option Name) := do
 /-- Single rewrite step: transport the goal along one equality.
 
     Categorically, this computes one Kan extension along the
-    substitution functor induced by the equality. -/
+    substitution functor induced by the equality.
+
+    Implementation: `kabstract` finds the left-hand side in the goal
+    (using `isDefEq` for subterm matching), `mkCongrArg` constructs
+    the equality proof, and `replaceTargetEq` updates the goal. -/
 def rewriteStep (mvarId : MVarId) (stx : Syntax) (symm : Bool)
     : TacticM MVarId := do
   let heq <- Lean.Elab.Term.elabTerm stx none
+  let heqType <- inferType heq
+  let some (α, lhs, rhs) := heqType.eq?
+    | throwError "rewriteStep: expected an equality proof"
+  let (lhs, rhs, proof) <- do
+    if symm then
+      let symmProof <- mkEqSymm heq
+      pure (rhs, lhs, symmProof)
+    else
+      pure (lhs, rhs, heq)
   let target <- instantiateMVars (<- mvarId.getType)
-  let result <- mvarId.rewrite target heq symm
-  mvarId.replaceTargetEq result.eNew result.eqProof
+  let abstracted <- kabstract target lhs
+  unless abstracted.hasLooseBVars do
+    throwError "rewriteStep: left-hand side not found in goal"
+  let newTarget := abstracted.instantiate1 rhs
+  let motive := mkLambda `x BinderInfo.default α abstracted
+  let eqProof <- mkCongrArg motive proof
+  mvarId.replaceTargetEq newTarget eqProof
 
-/-- Run the simplifier on a goal and process the result.
+/-- Try to rewrite a target expression using a single lemma proof.
 
-    If a propositional proof was produced, replace the target.
-    If the simplified expression is True, close the goal.
-    If no propositional change occurred, change the target definitionally. -/
-def processSimpResult (mvarId : MVarId) (result : Simp.Result)
-    : TacticM (List MVarId) :=
-  result.proof?.elim
-    (do let newGoal <- mvarId.change result.expr
-        pure [newGoal])
-    fun proof => do
-      let newGoal <- mvarId.replaceTargetEq result.expr proof
-      if result.expr.isConstOf ``True then
-        newGoal.assign (mkConst ``True.intro)
-        pure []
+    Opens universal quantifiers with `forallMetaTelescopeReducing`,
+    finds the left-hand side in the target via `kabstract` (which uses
+    `isDefEq` internally for subterm matching), and constructs the
+    equality proof via `mkCongrArg`. -/
+private def tryLemmaRewrite (target : Expr) (lemmaExpr : Expr)
+    : MetaM (Option (Expr × Expr)) := do
+  let saved <- saveState
+  try
+    let lemmaType <- inferType lemmaExpr
+    let (mvars, _, body) <- forallMetaTelescopeReducing lemmaType
+    match body.eq? with
+    | some (α, lhs, rhs) =>
+      let abstracted <- kabstract target lhs
+      if abstracted.hasLooseBVars then
+        let rhs <- instantiateMVars rhs
+        let newTarget := abstracted.instantiate1 rhs
+        let fullLemma <- instantiateMVars (mkAppN lemmaExpr mvars)
+        let motive := mkLambda `x BinderInfo.default α abstracted
+        let eqProof <- mkCongrArg motive fullLemma
+        pure (some (newTarget, eqProof))
       else
-        pure [newGoal]
+        saved.restore
+        pure none
+    | none =>
+      saved.restore
+      pure none
+  catch _ =>
+    saved.restore
+    pure none
+
+/-- Iteratively rewrite a target expression using the given lemmas
+    until no more rewrites apply.  Chains equality proofs via
+    `mkEqTrans`.  Stops after `fuel` steps to prevent loops. -/
+private partial def rewriteByLemmaLoop (target : Expr) (lemmas : Array Expr)
+    (proof? : Option Expr) (fuel : Nat) : MetaM (Expr × Option Expr) := do
+  if fuel == 0 then return (target, proof?)
+  for lemma in lemmas do
+    match (<- tryLemmaRewrite target lemma) with
+    | some (newTarget, stepProof) =>
+      let combined <- match proof? with
+        | some p => pure (some (<- mkEqTrans p stepProof))
+        | none => pure (some stepProof)
+      return (<- rewriteByLemmaLoop newTarget lemmas combined (fuel - 1))
+    | none => continue
+  return (target, proof?)
+
+/-- Apply the result of normalization to a goal.
+
+    If an equality proof is available, uses `replaceTargetEq`.
+    If only a definitional change occurred, uses `change`.
+    Closes the goal with `True.intro` if the result is `True`. -/
+private def applyNormalizeResult (mvarId : MVarId) (newTarget : Expr)
+    (eqProof? : Option Expr) : TacticM (List MVarId) :=
+  match eqProof? with
+  | some eqProof => do
+    let newGoal <- mvarId.replaceTargetEq newTarget eqProof
+    if newTarget.isConstOf ``True then
+      newGoal.assign (mkConst ``True.intro)
+      pure []
+    else
+      pure [newGoal]
+  | none => do
+    let newGoal <- mvarId.change newTarget
+    if newTarget.isConstOf ``True then
+      newGoal.assign (mkConst ``True.intro)
+      pure []
+    else
+      pure [newGoal]
+
+/-- Introduce all leading forall binders on a goal metavar,
+    extending its local context with each binder argument.
+    Returns the final metavar after all introductions. -/
+private partial def introAllForalls (mvarId : MVarId) : MetaM MVarId := do
+  let mvarDecl <- mvarId.getDecl
+  let target <- whnf mvarDecl.type
+  if target.isForall then
+    let fId <- mkFreshFVarId
+    let lctx := mvarDecl.lctx.mkLocalDecl fId target.bindingName!
+      target.bindingDomain! target.bindingInfo!
+    let bodyType := target.bindingBody!.instantiate1 (mkFVar fId)
+    let newGoal <- mkFreshExprMVarAt lctx mvarDecl.localInstances bodyType
+    mvarId.assign (mkLambda target.bindingName! target.bindingInfo!
+      target.bindingDomain! newGoal)
+    introAllForalls newGoal.mvarId!
+  else
+    pure mvarId
 
 /-- The minimal spanning set of Kan extension kinds.
 
@@ -129,7 +218,7 @@ inductive KanExtensionKind where
 
       Given f : A1 -> ... -> An -> B, the comma category (K | B) has a
       single object when f's return type unifies with B, projecting to
-      n subgoals.  Uses unconstrained elaboration + `mvarId.apply`. -/
+      n subgoals.  Uses `forallMetaTelescopeReducing` + `isDefEq`. -/
   | precomposition (stx : Syntax)
   /-- Partial precomposition with explicit holes.  Each placeholder
       in the term becomes a subgoal.
@@ -204,8 +293,19 @@ def execute (kind : KanExtensionKind) : MVarId -> TacticM (List MVarId) :=
     mvarId.assign e
     pure []
   | .precomposition stx => fun mvarId => do
+    -- Backward extension: `forallMetaTelescopeReducing` creates
+    -- metavars for all arguments, `isDefEq` checks the return type
+    -- matches the goal, and `assign` closes the goal.
     let e <- Lean.Elab.Term.elabTerm stx none
-    mvarId.apply e
+    let eType <- inferType e
+    let (mvars, _, body) <- forallMetaTelescopeReducing eType
+    let target <- instantiateMVars (<- mvarId.getType)
+    unless (<- isDefEq body target) do
+      throwError "precomposition: result type does not unify with goal"
+    mvarId.assign (mkAppN e mvars)
+    let unassigned <- mvars.filterM fun m =>
+      return !(<- m.mvarId!.isAssigned)
+    pure (unassigned.map (·.mvarId!)).toList
   | .precompositionRefine stx => fun mvarId => do
     let target <- mvarId.getType
     let e <- Lean.Elab.Term.elabTerm stx (some target)
@@ -214,48 +314,136 @@ def execute (kind : KanExtensionKind) : MVarId -> TacticM (List MVarId) :=
       return !(<- m.isAssigned)
     pure unassigned.toList
   | .adjunctionUnitIntro n => fun mvarId => do
-    let (_, newMVarId) <- mvarId.intro n
-    pure [newMVarId]
+    -- Adjunction unit: manually extend the local context,
+    -- create a new metavar in the extended context, and assign
+    -- the original goal with a lambda abstraction.
+    let mvarDecl <- mvarId.getDecl
+    let target <- instantiateMVars mvarDecl.type
+    let target <- whnf target
+    unless target.isForall do
+      throwError "adjunctionUnitIntro: target is not a forall"
+    let fvarId <- mkFreshFVarId
+    let lctx := mvarDecl.lctx.mkLocalDecl fvarId n
+      target.bindingDomain! target.bindingInfo!
+    let bodyType := target.bindingBody!.instantiate1 (mkFVar fvarId)
+    let newGoal <- mkFreshExprMVarAt lctx mvarDecl.localInstances
+      bodyType
+    mvarId.assign (mkLambda n target.bindingInfo!
+      target.bindingDomain! newGoal)
+    pure [newGoal.mvarId!]
   | .transport rules => fun mvarId => do
-    let goal <- rules.foldlM (fun g (stx, symm) => rewriteStep g stx symm) mvarId
-    (do goal.refl; pure []) <|> pure [goal]
+    let goal <- rules.foldlM
+      (fun g (stx, symm) => rewriteStep g stx symm) mvarId
+    -- Try closing with Eq.refl if the goal is a = a
+    let target <- instantiateMVars (<- goal.getType)
+    match target.eq? with
+    | some (_, lhs, rhs) =>
+      if (<- isDefEq lhs rhs) then
+        goal.assign (<- mkEqRefl lhs)
+        pure []
+      else
+        pure [goal]
+    | none => pure [goal]
   | .normalize => fun mvarId => do
-    let simpTheorems <- getSimpTheorems
-    let congrTheorems <- getSimpCongrTheorems
-    let ctx <- Simp.mkContext (simpTheorems := #[simpTheorems]) (congrTheorems := congrTheorems)
+    -- Phase 1: definitional reduction via Meta.reduce
     let target <- instantiateMVars (<- mvarId.getType)
-    let (result, _) <- Simp.main target ctx
-    processSimpResult mvarId result
+    let reduced <- Meta.reduce target
+      (explicitOnly := false) (skipTypes := false) (skipProofs := false)
+    -- Phase 2: equational rewriting with registered simp lemmas.
+    -- We read SimpTheorems for lemma data; the rewriting itself
+    -- uses kabstract + mkCongrArg, not Simp.main.
+    let simpTheorems <- getSimpTheorems
+    let candidates <- simpTheorems.post.getMatch reduced
+    let lemmas <- candidates.filterMapM fun thm => do
+      try pure (some (<- thm.getValue))
+      catch _ => pure none
+    let (final, proof?) <- rewriteByLemmaLoop reduced lemmas none 64
+    applyNormalizeResult mvarId final proof?
   | .normalizeDSimp => fun mvarId => do
-    let simpTheorems <- getSimpTheorems
-    let congrTheorems <- getSimpCongrTheorems
-    let ctx <- Simp.mkContext
-      (config := { zeta := true, beta := true, eta := true, iota := true, proj := true })
-      (simpTheorems := #[simpTheorems])
-      (congrTheorems := congrTheorems)
+    -- Definitional normalization: Meta.reduce performs beta, delta,
+    -- iota, zeta, and projection reduction directly on the expression.
     let target <- instantiateMVars (<- mvarId.getType)
-    let (result, _) <- Simp.main target ctx
-    let newGoal <- mvarId.change result.expr
+    let reduced <- Meta.reduce target
+      (explicitOnly := false) (skipTypes := false) (skipProofs := false)
+    let newGoal <- mvarId.change reduced
     pure [newGoal]
   | .normalizeSimpOnly lemmaStxs => fun mvarId => do
-    let simpTheorems <- lemmaStxs.foldlM (fun acc stx => do
-      let e <- Lean.Elab.Term.elabTerm stx none
-      e.constName?.elim
-        (pure acc)
-        fun n => acc.addConst n) ({} : SimpTheorems)
-    let congrTheorems <- getSimpCongrTheorems
-    let ctx <- Simp.mkContext (simpTheorems := #[simpTheorems]) (congrTheorems := congrTheorems)
+    -- Elaborate each lemma syntax to a proof expression,
+    -- then rewrite using the custom rewrite loop.
+    let lemmas <- lemmaStxs.mapM fun stx =>
+      Lean.Elab.Term.elabTerm stx none
     let target <- instantiateMVars (<- mvarId.getType)
-    let (result, _) <- Simp.main target ctx
-    processSimpResult mvarId result
+    let reduced <- Meta.reduce target
+      (explicitOnly := false) (skipTypes := false) (skipProofs := false)
+    let (final, proof?) <- rewriteByLemmaLoop reduced lemmas none 64
+    applyNormalizeResult mvarId final proof?
   | .colimitDecomposition stx => fun mvarId => do
+    -- Manual recursor construction: look up the casesOn constant,
+    -- build the motive by abstracting the discriminant from the goal,
+    -- assign parameters/motive/indices/discriminant, and intro
+    -- constructor arguments in each branch.
     let e <- Lean.Elab.Term.elabTerm stx none
-    (exprAsFVarId e).elim
-      (do let result <- mvarId.cases e.fvarId!
-          pure (result.map (fun s => s.mvarId)).toList)
-      fun fvarId => do
-        let result <- mvarId.cases fvarId
-        pure (result.map (fun s => s.mvarId)).toList
+    unless e.isFVar do
+      throwError "colimitDecomposition: expected a free variable"
+    let fvarId := e.fvarId!
+    mvarId.withContext do
+      let target <- instantiateMVars (<- mvarId.getType)
+      let hypType <- inferType (mkFVar fvarId)
+      let hypType <- whnf hypType
+      let env <- getEnv
+      let .const indName indLevels := hypType.getAppFn
+        | throwError "colimitDecomposition: hypothesis is not an inductive type"
+      let some indInfo := env.find? indName
+        | throwError "colimitDecomposition: {indName} not found"
+      let some indVal := inductiveVal? indInfo
+        | throwError "colimitDecomposition: {indName} is not an inductive type"
+      -- Build motive: abstract the discriminant from the goal
+      let abstracted <- kabstract target (mkFVar fvarId)
+      let motive := mkLambda `x BinderInfo.default hypType abstracted
+      -- Construct the casesOn recursor constant with proper levels:
+      -- motive sort level first, then the inductive's own levels.
+      let casesOnName := indName ++ `casesOn
+      let motiveLevel <- getLevel target
+      let casesOn := mkConst casesOnName (motiveLevel :: indLevels)
+      let casesOnType <- inferType casesOn
+      let (mvars, _, _) <- forallMetaTelescopeReducing casesOnType
+      -- Assign type parameters from the hypothesis
+      let typeArgs := hypType.getAppArgs
+      for i in [0:indVal.numParams] do
+        let some mvar := mvars[i]?
+          | break
+        let some arg := typeArgs[i]?
+          | break
+        mvar.mvarId!.assign arg
+      -- Assign the motive
+      let motiveIdx := indVal.numParams
+      let some motiveMVar := mvars[motiveIdx]?
+        | throwError "colimitDecomposition: motive metavar not found"
+      motiveMVar.mvarId!.assign motive
+      -- Assign index arguments (if any)
+      for i in [0:indVal.numIndices] do
+        let mvarIdx := indVal.numParams + 1 + i
+        let argIdx := indVal.numParams + i
+        let some mvar := mvars[mvarIdx]?
+          | break
+        let some arg := typeArgs[argIdx]?
+          | break
+        mvar.mvarId!.assign arg
+      -- Assign the discriminant
+      let discIdx := indVal.numParams + 1 + indVal.numIndices
+      let some discMVar := mvars[discIdx]?
+        | throwError "colimitDecomposition: discriminant metavar not found"
+      discMVar.mvarId!.assign (mkFVar fvarId)
+      -- Close the goal with the full casesOn application
+      mvarId.assign (mkAppN casesOn mvars)
+      -- Intro constructor arguments in each branch to place
+      -- fields in the local context (matching cases behavior)
+      let branchStart := discIdx + 1
+      let mut subgoals : Array MVarId := #[]
+      for i in [branchStart:mvars.size] do
+        let finalId <- introAllForalls mvars[i]!.mvarId!
+        subgoals := subgoals.push finalId
+      pure subgoals.toList
 
 /-- Execute a Kan extension tactic.
 
