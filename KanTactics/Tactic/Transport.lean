@@ -25,6 +25,16 @@ Multiple rewrites compose as iterated transport Kan extensions:
 
 Since Kan extensions compose, the chain is itself a Kan extension.
 
+### Scope
+
+`kan_rw` handles propositional equality (`Eq`) only.  It does not
+handle `Iff`, `HEq`, dependent rewrites with motive-validity
+obligations, or per-occurrence control.  Each step uses `kabstract`
+to find the left-hand side, `mkCongrArg` to build the equality
+proof, and `replaceTargetEq` to update the goal; the final goal
+is auto-closed with `Eq.refl` if it reduces to `a = a`.  This is
+the full behavior, not a wrapper over Lean's more general `rw`.
+
 ## Derived: kan_calc_trans (composed transports via transitivity)
 
 A calc block chains transitivities:

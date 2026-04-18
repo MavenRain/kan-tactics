@@ -1,19 +1,22 @@
 import KanTactics.Tactic.Core
+import KanTactics.Tactic.Precomposition
 
 /-!
 # KanTactics.Tactic.Identity
 
 Tactics derived from identity Kan extensions.
 
-## Primitive: kan_exact (Lan_Id F)
+## Derived: kan_exact (degenerate precomposition)
 
-Given a proof term e : A, the functor F maps the goal A to e.
-Along the identity embedding K = Id, the Kan extension is trivial:
+Given a proof term e : A, closing a goal of type A with e is the
+degenerate case of partial precomposition where the term has no
+holes and therefore produces no subgoals.  The identity Kan
+extension (Lan_Id F)(A) = F(A) = e factors through
+`precompositionRefine` without loss: both elaborate the term at
+the goal type and assign it, with `kan_refine` additionally
+collecting any unassigned metavariables (zero, in the exact case).
 
-    (Lan_Id F)(A) = F(A) = e
-
-The comma category (Id | A) has a single object (A, id), and
-F provides the proof directly.  No subgoals are produced.
+Implemented as: `kan_refine e`.
 
 ## Derived: kan_rfl (Lan_delta Id)
 
@@ -37,8 +40,11 @@ open Lean Elab Tactic
 
 set_option autoImplicit false
 
-/-- Exact: close a goal with a specific proof term.  (Primitive) -/
-elab "kan_exact " e:term : tactic => kanExtend (.identityExact e)
+/-- Exact: close a goal with a specific proof term.
+    Derived from `kan_refine`: the hole-free case of partial
+    precomposition. -/
+elab "kan_exact " e:term : tactic => do
+  evalTactic (<- `(tactic| kan_refine $e))
 
 /-- Reflexivity: close a = a via the identity Kan extension.
     Derived from `kan_exact`: tries `rfl`, then `True.intro`. -/

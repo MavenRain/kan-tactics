@@ -23,7 +23,12 @@ The colimit assembly applies f to the subgoal proofs:
     f proof_A1 proof_A2 ... proof_An : B
 
 Uses unconstrained elaboration (`elabTerm stx none`) followed by
-`mvarId.apply`, which has special unification logic for implicit arguments.
+`forallMetaTelescopeReducing` (to introduce metavars for each
+argument position) and `isDefEq` (to unify the return type with
+the goal).  This is a restricted subset of Lean's `apply`: it does
+not perform auto-intro, does not backtrack, and does not replicate
+`apply`'s implicit-argument heuristics.  Within that subset, it
+provides the exact precomposition semantics described above.
 
 ## refine as partial precomposition (Primitive)
 

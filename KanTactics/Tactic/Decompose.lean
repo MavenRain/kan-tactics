@@ -26,6 +26,20 @@ Each object contributes a subgoal: prove P with the constructor's
 arguments in context.  The assembly uses the type's recursor to
 combine the per-constructor proofs.
 
+### Scope
+
+`kan_cases` requires the discriminant to be a free variable; it
+does not generalize arbitrary expressions before case-splitting.
+For indexed inductives (like `Vec n`), the motive is wrapped with
+one lambda per index, which supports non-dependent goals and
+goals whose dependence on the indices does not conflict with the
+concrete index values of the hypothesis.  Dependent elimination
+where the goal must be re-typed at each constructor's index
+specialization is not automatically handled: the branch goals
+remain well-typed but the indices are not generalized for the
+user.  The implementation constructs the `casesOn` application
+directly; it does not invoke Lean's `Meta.cases`.
+
 ## Derived: kan_rcases (synonym, placeholder for iterated decomposition)
 
 rcases recursively applies cases, decomposing nested inductive

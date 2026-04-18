@@ -25,12 +25,14 @@ The left Kan extension (Lan_K F)(goal) computes:
 
 ## This Module
 
-Defines the **minimal spanning set** of 9 primitive Kan extension kinds.
-Every other tactic in the library is derived by composing these primitives.
+Defines the **minimal spanning set** of 8 primitive Kan extension kinds.
+Every other tactic in the library is derived by composing these primitives,
+optionally combined with goal- or hypothesis-inspection helpers
+(e.g., `firstCtorOf` used by `kan_constructor`) that do not themselves
+invoke Kan extensions.
 
-The 9 primitives, grouped by categorical origin:
+The 8 primitives, grouped by categorical origin:
 
-- **Identity**: `identityExact` (provide a proof term)
 - **Precomposition**: `precomposition` (apply), `precompositionRefine` (refine)
 - **Adjunction unit**: `adjunctionUnitIntro` (introduce one binder)
 - **Transport**: `transport` (rewrite by equalities)
@@ -38,10 +40,11 @@ The 9 primitives, grouped by categorical origin:
   `normalizeSimpOnly` (simp only)
 - **Decomposition**: `colimitDecomposition` (case analysis)
 
-Derived tactics (kan_rfl, kan_intros, kan_constructor, kan_use,
+Derived tactics (kan_exact, kan_rfl, kan_intros, kan_constructor, kan_use,
 kan_exists, kan_rcases, kan_calc_trans, kan_induction) compose these
-primitives, preserving the categorical interpretation while eliminating
-redundancy from the core.
+primitives.  `kan_exact` is derived from `precompositionRefine`: a goal
+closed by a term with no holes is the degenerate case of partial
+precomposition where no subgoals remain.
 -/
 
 
@@ -143,10 +146,14 @@ private def tryLemmaRewrite (target : Expr) (lemmaExpr : Expr)
 
 /-- Iteratively rewrite a target expression using the given lemmas
     until no more rewrites apply.  Chains equality proofs via
-    `mkEqTrans`.  Stops after `fuel` steps to prevent loops. -/
+    `mkEqTrans`.  Returns `(target, proof?, truncated)` where
+    `truncated = true` means the step limit was reached before
+    rewriting stabilized; the caller is responsible for surfacing
+    this to the user (e.g., via `logWarning`) so that "rewriting
+    converged" and "step limit truncated" are distinguishable. -/
 private partial def rewriteByLemmaLoop (target : Expr) (lemmas : Array Expr)
-    (proof? : Option Expr) (fuel : Nat) : MetaM (Expr × Option Expr) := do
-  if fuel == 0 then return (target, proof?)
+    (proof? : Option Expr) (fuel : Nat) : MetaM (Expr × Option Expr × Bool) := do
+  if fuel == 0 then return (target, proof?, true)
   for lemma in lemmas do
     match (<- tryLemmaRewrite target lemma) with
     | some (newTarget, stepProof) =>
@@ -155,7 +162,7 @@ private partial def rewriteByLemmaLoop (target : Expr) (lemmas : Array Expr)
         | none => pure (some stepProof)
       return (<- rewriteByLemmaLoop newTarget lemmas combined (fuel - 1))
     | none => continue
-  return (target, proof?)
+  return (target, proof?, false)
 
 /-- Apply the result of normalization to a goal.
 
@@ -202,17 +209,10 @@ private partial def introAllForalls (mvarId : MVarId) : MetaM MVarId := do
 
     Each variant identifies an independent categorical construction.
     No variant is expressible as a composition of others.  All other
-    tactics in the library are derived from these 9 primitives. -/
+    tactics in the library are derived from these 8 primitives,
+    optionally composed with helpers that inspect goals or
+    hypotheses (e.g., `firstCtorOf`). -/
 inductive KanExtensionKind where
-  /-- Trivial identity extension: the given term proves the goal.
-
-      Given a proof term e : A, the functor F maps the goal A to e.
-      Along the identity embedding K = Id:
-
-          (Lan_Id F)(A) = F(A) = e
-
-      The comma category (Id | A) has a single object (A, id). -/
-  | identityExact (stx : Syntax)
   /-- Backward extension along a morphism.  Reduces a goal of type B
       to subgoals by applying the given term.
 
@@ -266,7 +266,6 @@ inductive KanExtensionKind where
 /-- Human-readable name for each primitive Kan extension kind. -/
 def name (kind : KanExtensionKind) : String :=
   match kind with
-  | .identityExact _ => "identity (exact)"
   | .precomposition _ => "precomposition (apply)"
   | .precompositionRefine _ => "precomposition (refine)"
   | .adjunctionUnitIntro _ => "adjunction unit (intro)"
@@ -287,11 +286,6 @@ def name (kind : KanExtensionKind) : String :=
     `replaceMainGoal` (the caller handles goal management). -/
 def execute (kind : KanExtensionKind) : MVarId -> TacticM (List MVarId) :=
   match kind with
-  | .identityExact stx => fun mvarId => do
-    let target <- mvarId.getType
-    let e <- Lean.Elab.Term.elabTerm stx (some target)
-    mvarId.assign e
-    pure []
   | .precomposition stx => fun mvarId => do
     -- Backward extension: `forallMetaTelescopeReducing` creates
     -- metavars for all arguments, `isDefEq` checks the return type
@@ -357,7 +351,9 @@ def execute (kind : KanExtensionKind) : MVarId -> TacticM (List MVarId) :=
     let lemmas <- candidates.filterMapM fun thm => do
       try pure (some (<- thm.getValue))
       catch _ => pure none
-    let (final, proof?) <- rewriteByLemmaLoop reduced lemmas none 64
+    let (final, proof?, truncated) <- rewriteByLemmaLoop reduced lemmas none 64
+    if truncated then
+      logWarning "kan_simp: reached rewrite step limit; returning partial result (lemmas may be diverging)"
     applyNormalizeResult mvarId final proof?
   | .normalizeDSimp => fun mvarId => do
     -- Definitional normalization: Meta.reduce performs beta, delta,
@@ -375,13 +371,24 @@ def execute (kind : KanExtensionKind) : MVarId -> TacticM (List MVarId) :=
     let target <- instantiateMVars (<- mvarId.getType)
     let reduced <- Meta.reduce target
       (explicitOnly := false) (skipTypes := false) (skipProofs := false)
-    let (final, proof?) <- rewriteByLemmaLoop reduced lemmas none 64
+    let (final, proof?, truncated) <- rewriteByLemmaLoop reduced lemmas none 64
+    if truncated then
+      logWarning "kan_simp_only: reached rewrite step limit; returning partial result (lemmas may be diverging)"
     applyNormalizeResult mvarId final proof?
   | .colimitDecomposition stx => fun mvarId => do
     -- Manual recursor construction: look up the casesOn constant,
-    -- build the motive by abstracting the discriminant from the goal,
-    -- assign parameters/motive/indices/discriminant, and intro
-    -- constructor arguments in each branch.
+    -- build the motive by abstracting the discriminant (and, for
+    -- indexed inductives, each index) from the goal, assign
+    -- parameters/motive/indices/discriminant, and intro constructor
+    -- arguments in each branch.
+    --
+    -- For an inductive with k indices, casesOn's motive has type
+    --   (i₁ : I₁) → ... → (iₖ : Iₖ) → IndType params i₁ ... iₖ → Sort u
+    -- so the motive is wrapped with one lambda per index.  The motive
+    -- body does not generalize indices that appear in the goal; for
+    -- dependent elimination where the goal varies with the index, the
+    -- resulting branch goals remain well-typed but will not be
+    -- automatically simplified.
     let e <- Lean.Elab.Term.elabTerm stx none
     unless e.isFVar do
       throwError "colimitDecomposition: expected a free variable"
@@ -397,9 +404,29 @@ def execute (kind : KanExtensionKind) : MVarId -> TacticM (List MVarId) :=
         | throwError "colimitDecomposition: {indName} not found"
       let some indVal := inductiveVal? indInfo
         | throwError "colimitDecomposition: {indName} is not an inductive type"
-      -- Build motive: abstract the discriminant from the goal
-      let abstracted <- kabstract target (mkFVar fvarId)
-      let motive := mkLambda `x BinderInfo.default hypType abstracted
+      let typeArgs := hypType.getAppArgs
+      -- Extract index terms and their types for motive construction.
+      -- A well-typed inductive application has `numParams + numIndices`
+      -- arguments, so the index positions are always present.
+      let indexTerms : Array Expr := (Array.range indVal.numIndices).map fun i =>
+        typeArgs[indVal.numParams + i]!
+      let indexTypes <- indexTerms.mapM inferType
+      -- Build motive body: abstract the discriminant at bvar 0
+      let targetAbs <- kabstract target (mkFVar fvarId) 0
+      -- Abstract indices from the inner hypothesis type so that
+      -- bvar 0 = last index, bvar (k-1) = first index.  This makes
+      -- the inner binder type `IndType params i₁ ... iₖ` reference
+      -- the outer index binders via de Bruijn indices.
+      let mut innerHypT := hypType
+      for i in [0:indVal.numIndices] do
+        let indexPos := indVal.numIndices - 1 - i
+        innerHypT <- kabstract innerHypT indexTerms[indexPos]! i
+      -- Wrap: innermost lambda binds the discriminant, outer lambdas
+      -- bind each index with the first index as the outermost binder.
+      let mut motive := mkLambda `x BinderInfo.default innerHypT targetAbs
+      for i in [0:indVal.numIndices] do
+        let indexPos := indVal.numIndices - 1 - i
+        motive := mkLambda `i BinderInfo.default indexTypes[indexPos]! motive
       -- Construct the casesOn recursor constant with proper levels:
       -- motive sort level first, then the inductive's own levels.
       let casesOnName := indName ++ `casesOn
@@ -408,7 +435,6 @@ def execute (kind : KanExtensionKind) : MVarId -> TacticM (List MVarId) :=
       let casesOnType <- inferType casesOn
       let (mvars, _, _) <- forallMetaTelescopeReducing casesOnType
       -- Assign type parameters from the hypothesis
-      let typeArgs := hypType.getAppArgs
       for i in [0:indVal.numParams] do
         let some mvar := mvars[i]?
           | break
