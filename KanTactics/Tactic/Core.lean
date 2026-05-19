@@ -410,9 +410,9 @@ def execute (kind : KanExtensionKind) : MVarId -> TacticM (List MVarId) :=
       -- arguments, so the index positions are always present.
       let indexTerms : Array Expr := (Array.range indVal.numIndices).map fun i =>
         typeArgs[indVal.numParams + i]!
-      let indexTypes <- indexTerms.mapM inferType
+      let indexTypes <- (indexTerms.mapM inferType : MetaM (Array Expr))
       -- Build motive body: abstract the discriminant at bvar 0
-      let targetAbs <- kabstract target (mkFVar fvarId) 0
+      let targetAbs <- kabstract target (mkFVar fvarId) .all
       -- Abstract indices from the inner hypothesis type so that
       -- bvar 0 = last index, bvar (k-1) = first index.  This makes
       -- the inner binder type `IndType params i₁ ... iₖ` reference
@@ -420,7 +420,7 @@ def execute (kind : KanExtensionKind) : MVarId -> TacticM (List MVarId) :=
       let mut innerHypT := hypType
       for i in [0:indVal.numIndices] do
         let indexPos := indVal.numIndices - 1 - i
-        innerHypT <- kabstract innerHypT indexTerms[indexPos]! i
+        innerHypT <- kabstract innerHypT indexTerms[indexPos]! .all
       -- Wrap: innermost lambda binds the discriminant, outer lambdas
       -- bind each index with the first index as the outermost binder.
       let mut motive := mkLambda `x BinderInfo.default innerHypT targetAbs
