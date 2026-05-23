@@ -63,7 +63,7 @@ private partial def introAll : TacticM Unit := do
 /-- Introduce multiple binders via iterated adjunction units.
     With no arguments, introduces all leading binders.
     Derived from `kan_intro`. -/
-elab "kan_intros" xs:(ppSpace ident)* : tactic => do
+elab "kan_intros" xs:(ppSpace colGt ident)* : tactic => do
   if xs.isEmpty then
     introAll
   else

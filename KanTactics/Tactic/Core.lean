@@ -308,23 +308,18 @@ def execute (kind : KanExtensionKind) : MVarId -> TacticM (List MVarId) :=
       return !(<- m.isAssigned)
     pure unassigned.toList
   | .adjunctionUnitIntro n => fun mvarId => do
-    -- Adjunction unit: manually extend the local context,
-    -- create a new metavar in the extended context, and assign
-    -- the original goal with a lambda abstraction.
-    let mvarDecl <- mvarId.getDecl
-    let target <- instantiateMVars mvarDecl.type
+    -- Adjunction unit: introduce one binder.  The check + intro is
+    -- delegated to Lean's `MVarId.intro` primitive, which performs
+    -- the whnf-then-isForall test and creates a properly-abstracted
+    -- new metavar in the extended context.  Kan-extension semantics:
+    -- the unit of the exponential adjunction Hom(Γ x A, B) ≃
+    -- Hom(Γ, A → B); this introduction step is exactly that unit.
+    let target <- instantiateMVars (<- mvarId.getType)
     let target <- whnf target
     unless target.isForall do
       throwError "adjunctionUnitIntro: target is not a forall"
-    let fvarId <- mkFreshFVarId
-    let lctx := mvarDecl.lctx.mkLocalDecl fvarId n
-      target.bindingDomain! target.bindingInfo!
-    let bodyType := target.bindingBody!.instantiate1 (mkFVar fvarId)
-    let newGoal <- mkFreshExprMVarAt lctx mvarDecl.localInstances
-      bodyType
-    mvarId.assign (mkLambda n target.bindingInfo!
-      target.bindingDomain! newGoal)
-    pure [newGoal.mvarId!]
+    let (_fvarId, newMVarId) <- mvarId.intro n
+    pure [newMVarId]
   | .transport rules => fun mvarId => do
     let goal <- rules.foldlM
       (fun g (stx, symm) => rewriteStep g stx symm) mvarId
