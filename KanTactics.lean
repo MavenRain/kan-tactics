@@ -1,7 +1,8 @@
-import KanTactics.Category.Basic
-import KanTactics.Category.Functor
-import KanTactics.Category.NatTrans
-import KanTactics.Category.KanExtension
+-- Categorical foundation: depend on comp-cat-theory for Category, Functor,
+-- NatTrans, LeftKanExtension, RightKanExtension.
+import CompCatTheory
+
+-- Tactic layer: each tactic shown to be an instance of `kanExtend`.
 import KanTactics.Tactic.Core
 import KanTactics.Tactic.Identity
 import KanTactics.Tactic.Precomposition
@@ -11,3 +12,6 @@ import KanTactics.Tactic.Normalize
 import KanTactics.Tactic.Colimit
 import KanTactics.Tactic.Decompose
 import KanTactics.Tactic.InitialAlgebra
+
+-- Worked examples illustrating the Mac Lane dictum.
+import KanTactics.Examples.LanAlongIdentity

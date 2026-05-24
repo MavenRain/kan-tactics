@@ -1,6 +1,16 @@
 {"version": "1.2.0",
  "packagesDir": ".lake/packages",
- "packages": [],
+ "packages":
+ [{"url": "https://github.com/MavenRain/comp-cat-theory.git",
+   "type": "git",
+   "subDir": null,
+   "scope": "",
+   "rev": "f52108114a8fea202cf45faec19f062a4cd28eeb",
+   "name": "«comp-cat-theory»",
+   "manifestFile": "lake-manifest.json",
+   "inputRev": "f521081",
+   "inherited": false,
+   "configFile": "lakefile.toml"}],
  "name": "«kan-tactics»",
  "lakeDir": ".lake",
  "fixedToolchain": false}
