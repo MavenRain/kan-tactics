@@ -15,3 +15,4 @@ import KanTactics.Tactic.InitialAlgebra
 
 -- Worked examples illustrating the Mac Lane dictum.
 import KanTactics.Examples.LanAlongIdentity
+import KanTactics.Examples.SmokeTest
