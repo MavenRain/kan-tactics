@@ -78,3 +78,18 @@ elab_rules : tactic
     Derived from `kan_refine` via `@Eq.trans _ _ b _ _ _`. -/
 elab "kan_calc_trans " mid:term : tactic => do
   evalTactic (<- `(tactic| kan_refine (@Eq.trans _ _ $mid _ _ _)))
+
+/-- Substitution along an identity edge (the J / `Eq.rec` eliminator).
+    (Primitive.)
+
+    `kan_subst h`, where `h : a = b` is an equation hypothesis with a
+    free variable on one side, eliminates that variable by transporting
+    the whole local context and goal along `h`, then clears `h`.
+
+    Where `kan_rw` is transport restricted to the goal (it cannot
+    generalise a variable out of the context), `kan_subst` is the full
+    path-category transport: the colimit over the one-object path
+    category of `h` is the unique `Eq.rec` fill, which performs the
+    motive generalisation `kan_rw` cannot.  This is the tactic surface
+    of the `substitution` Kan extension kind. -/
+elab "kan_subst " h:term : tactic => kanExtend (.substitution h)

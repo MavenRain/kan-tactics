@@ -3,6 +3,7 @@ import KanTactics.Tactic.Precomposition
 import KanTactics.Tactic.Transport
 import KanTactics.Tactic.Normalize
 import KanTactics.Tactic.AdjUnit
+import KanTactics.Tactic.Decompose
 import CompCatTheory.Foundation.Category
 import CompCatTheory.Foundation.Product
 
@@ -58,7 +59,35 @@ example {A B : C} : ∀ (f : Hom A B), 𝟙 A ≫ f = f := by
   kan_intros f
   kan_exact id_comp f
 
+/-- `kan_subst` eliminates a variable along an object equality,
+    re-typing the goal so a context morphism closes it directly.  This
+    is the J/`Eq.rec` edge that `kan_rw` (goal-only transport) cannot
+    perform. -/
+example {A B B' : C} (h : B = B') (f : Hom A B) : Hom A B' := by
+  kan_subst h
+  kan_exact f
+
+/-- `kan_subst` on a dependent hypothesis: substituting the object
+    equality re-types morphism hypotheses so an `HEq` collapses to the
+    aligned `HEq`. -/
+example {A B B' : C} (h : B = B') (f : Hom A B) (g : Hom A B')
+    (hfg : HEq f g) : HEq g f := by
+  kan_subst h
+  kan_exact (HEq.symm hfg)
+
 end CategoryGoals
+
+section ClassicalGoals
+
+/-- `kan_by_cases` performs the classical split via `Classical.em`
+    (coproduct elimination), leaving `h : P` and `h : ¬ P` branches —
+    composed entirely from `kan_refine` + `kan_intro`, no new primitive. -/
+example (P : Prop) : P ∨ ¬ P := by
+  kan_by_cases hp : P
+  · kan_exact Or.inl hp
+  · kan_exact Or.inr hp
+
+end ClassicalGoals
 
 section ProductCategoryGoals
 

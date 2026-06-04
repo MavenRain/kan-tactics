@@ -1,4 +1,6 @@
 import KanTactics.Tactic.Core
+import KanTactics.Tactic.Precomposition  -- kan_refine, used by kan_by_cases
+import KanTactics.Tactic.AdjUnit         -- kan_intro, used by kan_by_cases
 
 /-!
 # KanTactics.Tactic.Decompose
@@ -64,3 +66,16 @@ elab "kan_cases " e:term : tactic => kanExtend (.colimitDecomposition e)
     Derived: currently identical to `kan_cases`. -/
 elab "kan_rcases " e:term : tactic => do
   evalTactic (<- `(tactic| kan_cases $e))
+
+/-- Classical case split.  `kan_by_cases h : P` produces two goals,
+    one with `h : P` and one with `h : ¬ P`.
+
+    Derived (no new primitive): the law of excluded middle
+    `Classical.em P : P ∨ ¬ P` is a coproduct, and the split is its
+    elimination.  Concretely this is `kan_refine (Or.elim (Classical.em P) ?_ ?_)`
+    — backward extension along `Or.elim` leaving the two branch maps as
+    holes — followed by `kan_intro h` on each branch (the adjunction
+    unit currying `P`/`¬P` into context).  Both steps are existing
+    primitives, so the classical split costs no new Kan extension kind. -/
+macro "kan_by_cases " h:ident " : " p:term : tactic =>
+  `(tactic| (kan_refine (Or.elim (Classical.em $p) ?_ ?_)) <;> kan_intro $h)

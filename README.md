@@ -41,10 +41,10 @@ KanTactics/
     Identity.lean        kan_rfl, kan_exact
     Precomposition.lean  kan_apply, kan_refine
     AdjUnit.lean         kan_intro, kan_intros
-    Transport.lean       kan_rw, kan_calc_trans
+    Transport.lean       kan_rw, kan_calc_trans, kan_subst
     Normalize.lean       kan_simp, kan_dsimp, kan_simp_only
     Colimit.lean         kan_constructor, kan_use, kan_exists
-    Decompose.lean       kan_cases, kan_rcases
+    Decompose.lean       kan_cases, kan_rcases, kan_by_cases
     InitialAlgebra.lean  kan_induction
 
   Examples/
@@ -73,7 +73,7 @@ the Category typeclass directly; the typeclass is the conceptual
 foundation that justifies why each tactic is a Kan extension, not a
 runtime input to the tactic.
 
-## The 8 primitive Kan extension kinds
+## The 9 primitive Kan extension kinds
 
 `KanExtensionKind` (in `Tactic/Core.lean`) is the minimal spanning set:
 
@@ -82,16 +82,23 @@ runtime input to the tactic.
 | `precomposition` | `kan_apply` | Backward extension along a morphism |
 | `precompositionRefine` | `kan_refine`, `kan_exact` | Partial precomposition with holes |
 | `adjunctionUnitIntro` | `kan_intro`, `kan_intros` | Unit of the exponential adjunction |
-| `transport` | `kan_rw`, `kan_calc_trans` | Substitution Kan extension |
+| `transport` | `kan_rw`, `kan_calc_trans` | Substitution Kan extension (goal-only) |
+| `substitution` | `kan_subst` | Identity-edge transport (J / `Eq.rec`); generalises a variable out of the whole context |
 | `normalize` | `kan_simp` | Full transport category of simp lemmas |
 | `normalizeDSimp` | `kan_dsimp` | Sub-groupoid of definitional equalities |
 | `normalizeSimpOnly` | `kan_simp_only` | Restricted transport lemma set |
 | `colimitDecomposition` | `kan_cases`, `kan_rcases` | Coproduct elimination |
 
+`transport` rewrites occurrences in the goal; `substitution` is the
+distinct primitive that eliminates a *variable* along an equation,
+transporting the entire local context and goal (the motive
+generalisation `transport` cannot synthesise).
+
 Every tactic invokes `kanExtend` with a `KanExtensionKind` value;
 derived tactics (`kan_exact`, `kan_rfl`, `kan_intros`, `kan_use`,
-`kan_exists`, `kan_constructor`, `kan_calc_trans`, `kan_induction`)
-compose primitives via `evalTactic` rather than adding new variants.
+`kan_exists`, `kan_constructor`, `kan_calc_trans`, `kan_induction`,
+`kan_by_cases`) compose primitives via `evalTactic`/macros rather than
+adding new variants.
 
 ## Tactic reference
 
@@ -105,6 +112,7 @@ compose primitives via `evalTactic` rather than adding new variants.
 | `kan_intros` | Adjunction unit | Iterated currying (composed adjunction units) |
 | `kan_rw [h1, <-h2]` | Transport | Transport along equality paths; each rewrite is a substitution Kan extension |
 | `kan_calc_trans b` | Transport | Transitivity via Eq.trans; splits a = c into a = b and b = c |
+| `kan_subst h` | Substitution | Identity-edge transport; eliminates a variable along `h : a = b` (handles `HEq` via `heqToEq`), generalising the whole context |
 | `kan_simp` | Normalize | Automated search in the transport category of simp lemmas |
 | `kan_dsimp` | Normalize | Restricted to the sub-groupoid of definitional equalities |
 | `kan_simp_only [h]` | Normalize | Transport category restricted to the given lemma set |
@@ -113,6 +121,7 @@ compose primitives via `evalTactic` rather than adding new variants.
 | `kan_exists e` | Colimit injection | Synonym for `kan_use` |
 | `kan_cases h` | Colimit decomposition | Coproduct elimination; one subgoal per constructor |
 | `kan_rcases h` | Colimit decomposition | Iterated coproduct elimination (basic recursive cases) |
+| `kan_by_cases h : P` | Colimit decomposition | Classical split; coproduct elimination on `Classical.em P` (derived from `kan_refine` + `kan_intro`) |
 | `kan_induction n` | Initial algebra | Extension along the initial algebra structure map; recursor is the unique morphism |
 
 ## Building

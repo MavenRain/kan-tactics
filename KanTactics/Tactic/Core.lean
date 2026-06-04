@@ -1,5 +1,6 @@
 import Lean
 import Lean.Meta.Tactic.Simp  -- SimpTheorems data access only; Simp.main is not called
+import Lean.Meta.Tactic.Subst  -- Lean.Meta.subst, for the `substitution` Kan extension kind
 
 /-!
 # KanTactics.Tactic.Core
@@ -25,24 +26,25 @@ The left Kan extension (Lan_K F)(goal) computes:
 
 ## This Module
 
-Defines the **minimal spanning set** of 8 primitive Kan extension kinds.
+Defines the **minimal spanning set** of 9 primitive Kan extension kinds.
 Every other tactic in the library is derived by composing these primitives,
 optionally combined with goal- or hypothesis-inspection helpers
 (e.g., `firstCtorOf` used by `kan_constructor`) that do not themselves
 invoke Kan extensions.
 
-The 8 primitives, grouped by categorical origin:
+The 9 primitives, grouped by categorical origin:
 
 - **Precomposition**: `precomposition` (apply), `precompositionRefine` (refine)
 - **Adjunction unit**: `adjunctionUnitIntro` (introduce one binder)
-- **Transport**: `transport` (rewrite by equalities)
+- **Transport**: `transport` (rewrite by equalities), `substitution`
+  (eliminate a variable along an equation — the J/`Eq.rec` edge)
 - **Normalization**: `normalize` (simp), `normalizeDSimp` (dsimp),
   `normalizeSimpOnly` (simp only)
 - **Decomposition**: `colimitDecomposition` (case analysis)
 
 Derived tactics (kan_exact, kan_rfl, kan_intros, kan_constructor, kan_use,
-kan_exists, kan_rcases, kan_calc_trans, kan_induction) compose these
-primitives.  `kan_exact` is derived from `precompositionRefine`: a goal
+kan_exists, kan_rcases, kan_by_cases, kan_calc_trans, kan_induction)
+compose these primitives.  `kan_exact` is derived from `precompositionRefine`: a goal
 closed by a term with no holes is the degenerate case of partial
 precomposition where no subgoals remain.
 -/
@@ -209,7 +211,7 @@ private partial def introAllForalls (mvarId : MVarId) : MetaM MVarId := do
 
     Each variant identifies an independent categorical construction.
     No variant is expressible as a composition of others.  All other
-    tactics in the library are derived from these 8 primitives,
+    tactics in the library are derived from these 9 primitives,
     optionally composed with helpers that inspect goals or
     hypotheses (e.g., `firstCtorOf`). -/
 inductive KanExtensionKind where
@@ -262,6 +264,18 @@ inductive KanExtensionKind where
       (K | h : T) into one object per constructor, each contributing
       a subgoal with the constructor's arguments in context. -/
   | colimitDecomposition (stx : Syntax)
+  /-- Substitution along an identity edge (the J / `Eq.rec` eliminator).
+      Given an equation hypothesis `h : a = b` where one side is a free
+      variable, eliminate that variable by transporting the *entire*
+      local context and goal along `h`, then clear `h`.
+
+      This is the transport Kan extension whose comma category is the
+      path category of `h`: distinct from `transport` (which rewrites
+      only the goal via `kabstract` and does not generalise a variable
+      out of the context).  The colimit over the one-object path
+      category is the unique fill given by `Eq.rec`'s motive
+      generalisation — exactly what `transport` cannot synthesise. -/
+  | substitution (stx : Syntax)
 
 /-- Human-readable name for each primitive Kan extension kind. -/
 def name (kind : KanExtensionKind) : String :=
@@ -274,6 +288,7 @@ def name (kind : KanExtensionKind) : String :=
   | .normalizeDSimp => "normalize (dsimp)"
   | .normalizeSimpOnly _ => "normalize (simp only)"
   | .colimitDecomposition _ => "colimit decomposition (cases)"
+  | .substitution _ => "substitution (subst)"
 
 /-- Execute the Kan extension computation for a given kind on a goal.
 
@@ -465,6 +480,17 @@ def execute (kind : KanExtensionKind) : MVarId -> TacticM (List MVarId) :=
         let finalId <- introAllForalls mvars[i]!.mvarId!
         subgoals := subgoals.push finalId
       pure subgoals.toList
+  | .substitution stx => fun mvarId => do
+    -- The identity-edge transport.  `stx` names an equation hypothesis
+    -- `h : a = b`; `MVarId.subst` performs the `Eq.rec` motive
+    -- generalisation over the whole context and goal, eliminating the
+    -- variable side and clearing `h`.  The eliminator is the unique
+    -- colimit fill of the path category of `h`.
+    let e <- Lean.Elab.Term.elabTerm stx none
+    unless e.isFVar do
+      throwError "substitution: expected a free variable (an equation hypothesis h : a = b)"
+    let newGoal <- Lean.Meta.subst mvarId e.fvarId!
+    pure [newGoal]
 
 /-- Execute a Kan extension tactic.
 
