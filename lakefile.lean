@@ -5,7 +5,7 @@ package «kan-tactics» where
   leanOptions := #[⟨`autoImplicit, false⟩]
 
 require «comp-cat-theory» from git
-  "https://github.com/MavenRain/comp-cat-theory.git" @ "f521081"
+  "https://github.com/MavenRain/comp-cat-theory.git" @ "cc6ced1"
 
 @[default_target]
 lean_lib «KanTactics» where
@@ -13,4 +13,4 @@ lean_lib «KanTactics» where
 
 meta if get_config? env = some "dev" then
 require «doc-gen4» from git
-  "https://github.com/leanprover/doc-gen4" @ "main"
+  "https://github.com/leanprover/doc-gen4" @ "498457dedc5b"
